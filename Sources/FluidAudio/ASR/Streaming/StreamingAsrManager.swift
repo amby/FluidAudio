@@ -306,6 +306,10 @@ public actor StreamingAsrManager {
         do {
             let chunkStartTime = Date()
 
+            // Calculate absolute time offset of window start from stream beginning
+            let leftStartAbs = max(0, nextWindowCenterStart - config.leftContextSamples)
+            let windowTimeOffset = TimeInterval(leftStartAbs) / 16000.0
+
             // Start frame offset is now handled by decoder's timeJump mechanism
 
             // Call AsrManager directly with deduplication
@@ -324,11 +328,16 @@ public actor StreamingAsrManager {
             let processingTime = Date().timeIntervalSince(chunkStartTime)
             processedChunks += 1
 
+            // Convert window time offset to frame units and add to timestamps
+            // This makes timestamps absolute from the beginning of the audio stream
+            let windowFrameOffset = Int(windowTimeOffset / 0.08)  // Convert seconds to frames
+            let absoluteTimestamps = timestamps.map { $0 + windowFrameOffset }
+
             // Convert only the current chunk tokens to text for clean incremental updates
             // The final result will use all accumulated tokens for proper deduplication
             let interim = asrManager.processTranscriptionResult(
                 tokenIds: tokens,  // Only current chunk tokens for progress updates
-                timestamps: timestamps,
+                timestamps: absoluteTimestamps,  // Use absolute frame timestamps
                 confidences: confidences,
                 encoderSequenceLength: 0,
                 audioSamples: windowSamples,
@@ -352,7 +361,8 @@ public actor StreamingAsrManager {
                 text: interim.text,
                 isConfirmed: shouldConfirm,
                 confidence: interim.confidence,
-                timestamp: Date()
+                timestamp: Date(),
+                tokenTimings: interim.tokenTimings
             )
 
             updateContinuation?.yield(update)
@@ -594,15 +604,20 @@ public struct StreamingTranscriptionUpdate: Sendable {
     /// Timestamp of this update
     public let timestamp: Date
 
+    /// Token timings
+    public let tokenTimings: [TokenTiming]?
+
     public init(
         text: String,
         isConfirmed: Bool,
         confidence: Float,
-        timestamp: Date
+        timestamp: Date,
+        tokenTimings: [TokenTiming]?
     ) {
         self.text = text
         self.isConfirmed = isConfirmed
         self.confidence = confidence
         self.timestamp = timestamp
+        self.tokenTimings = tokenTimings
     }
 }

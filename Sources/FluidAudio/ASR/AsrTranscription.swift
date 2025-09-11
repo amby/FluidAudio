@@ -189,7 +189,6 @@ extension AsrManager {
         processingTime: TimeInterval,
         tokenTimings: [TokenTiming] = []
     ) -> ASRResult {
-
         let (text, finalTimings) = convertTokensWithExistingTimings(tokenIds, timings: tokenTimings)
         let duration = TimeInterval(audioSamples.count) / TimeInterval(config.sampleRate)
 

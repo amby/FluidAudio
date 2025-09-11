@@ -128,7 +128,8 @@ final class StreamingAsrManagerTests: XCTestCase {
             text: "Hello world",
             isConfirmed: true,
             confidence: 0.95,
-            timestamp: Date()
+            timestamp: Date(),
+            tokenTimings: nil
         )
 
         XCTAssertEqual(update.text, "Hello world")
@@ -143,7 +144,8 @@ final class StreamingAsrManagerTests: XCTestCase {
             text: "uncertain text",
             isConfirmed: false,
             confidence: 0.5,
-            timestamp: Date()
+            timestamp: Date(),
+            tokenTimings: nil
         )
         XCTAssertFalse(lowConfUpdate.isConfirmed)
         XCTAssertLessThan(lowConfUpdate.confidence, 0.75)
@@ -153,7 +155,8 @@ final class StreamingAsrManagerTests: XCTestCase {
             text: "certain text",
             isConfirmed: true,
             confidence: 0.95,
-            timestamp: Date()
+            timestamp: Date(),
+            tokenTimings: nil
         )
         XCTAssertTrue(highConfUpdate.isConfirmed)
         XCTAssertGreaterThan(highConfUpdate.confidence, 0.85)
