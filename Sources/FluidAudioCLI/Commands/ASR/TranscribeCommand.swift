@@ -334,14 +334,14 @@ enum TranscribeCommand {
             try await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
 
             // Finalize transcription
-            let finalText = try await streamingAsr.finish()
+            let finalResult = try await streamingAsr.finish()
 
             // Cancel update task
             updateTask.cancel()
 
             // Show final results with actual processing performance
             let processingTime = await tracker.getElapsedProcessingTime()
-            await streamingUI.showFinalResults(finalText: finalText, totalTime: processingTime)
+            await streamingUI.showFinalResults(finalText: finalResult.text, totalTime: processingTime)
             await streamingUI.finish()
 
         } catch {

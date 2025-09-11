@@ -25,7 +25,7 @@ public actor StreamingAsrManager {
     // Sliding window state
     private var segmentIndex: Int = 0
     private var lastProcessedFrame: Int = 0
-    private var accumulatedTokens: [Int] = []
+    private var accumulatedTokenTimings: [TokenTiming] = []  // Accumulated token timings with absolute timestamps
 
     // Raw sample buffer for sliding-window assembly (absolute indexing)
     private var sampleBuffer: [Float] = []
@@ -92,7 +92,7 @@ public actor StreamingAsrManager {
         // Reset sliding window state
         segmentIndex = 0
         lastProcessedFrame = 0
-        accumulatedTokens.removeAll()
+        accumulatedTokenTimings.removeAll()
 
         startTime = Date()
 
@@ -143,9 +143,9 @@ public actor StreamingAsrManager {
         }
     }
 
-    /// Finish streaming and get the final transcription
-    /// - Returns: The complete transcription text
-    public func finish() async throws -> String {
+    /// Finish streaming and get the final transcription with token timings
+    /// - Returns: ASRResult containing the complete transcription text and token timings
+    public func finish() async throws -> ASRResult {
         logger.info("Finishing streaming ASR...")
 
         // Signal end of input
@@ -159,25 +159,38 @@ public actor StreamingAsrManager {
             throw error
         }
 
-        // Convert final accumulated tokens to text (proper way to avoid duplicates)
-        let finalText: String
-        if let asrManager = asrManager, !accumulatedTokens.isEmpty {
-            let finalResult = asrManager.processTranscriptionResult(
-                tokenIds: accumulatedTokens,
-                timestamps: [],
-                confidences: [],  // No per-token confidences needed for final text
+        // Convert final accumulated token timings to text
+        let finalResult: ASRResult
+        if let asrManager = asrManager, !accumulatedTokenTimings.isEmpty {
+            // Extract token IDs and timestamps from accumulated TokenTiming instances
+            let tokenIds = accumulatedTokenTimings.map { $0.tokenId }
+            let timestamps = accumulatedTokenTimings.map { Int($0.startTime / 0.08) }  // Convert to frame timestamps
+            let confidences = accumulatedTokenTimings.map { $0.confidence }
+            
+            let finalAsrResult = asrManager.processTranscriptionResult(
+                tokenIds: tokenIds,
+                timestamps: timestamps,
+                confidences: confidences,
                 encoderSequenceLength: 0,
                 audioSamples: [],  // Not needed for final text conversion
-                processingTime: 0
+                processingTime: 0,
+                tokenTimings: accumulatedTokenTimings  // Pass the accumulated TokenTiming instances directly
             )
-            finalText = finalResult.text
+            finalResult = finalAsrResult
         } else {
             // Fallback to text concatenation if no tokens available
-            finalText = confirmedTranscript + volatileTranscript
+            let fallbackText = confirmedTranscript + volatileTranscript
+            finalResult = ASRResult(
+                text: fallbackText,
+                confidence: 0.0,
+                duration: Date().timeIntervalSince(startTime ?? Date()),
+                processingTime: 0,
+                tokenTimings: nil
+            )
         }
 
-        logger.info("Final transcription: \(finalText.count) characters")
-        return finalText
+        logger.info("Final transcription: \(finalResult.text.count) characters")
+        return finalResult
     }
 
     /// Reset the transcriber for a new session
@@ -198,7 +211,7 @@ public actor StreamingAsrManager {
         // Reset sliding window state
         segmentIndex = 0
         lastProcessedFrame = 0
-        accumulatedTokens.removeAll()
+        accumulatedTokenTimings.removeAll()
 
         logger.info("StreamingAsrManager reset for source: \(String(describing: self.audioSource))")
     }
@@ -316,12 +329,11 @@ public actor StreamingAsrManager {
             let (tokens, timestamps, confidences, _) = try await asrManager.transcribeStreamingChunk(
                 windowSamples,
                 source: audioSource,
-                previousTokens: accumulatedTokens,
+                previousTokens: accumulatedTokenTimings.map { $0.tokenId },
                 enableDebug: config.enableDebug
             )
 
             // Update state
-            accumulatedTokens.append(contentsOf: tokens)
             lastProcessedFrame = max(lastProcessedFrame, timestamps.max() ?? 0)
             segmentIndex += 1
 
@@ -343,6 +355,11 @@ public actor StreamingAsrManager {
                 audioSamples: windowSamples,
                 processingTime: processingTime
             )
+
+            // Accumulate the token timings from the result
+            if let tokenTimings = interim.tokenTimings {
+                accumulatedTokenTimings.append(contentsOf: tokenTimings)
+            }
 
             logger.debug(
                 "Chunk \(self.processedChunks): '\(interim.text)', time: \(String(format: "%.3f", processingTime))s)"
