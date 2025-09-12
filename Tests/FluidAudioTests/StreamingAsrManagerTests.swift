@@ -126,6 +126,8 @@ final class StreamingAsrManagerTests: XCTestCase {
     func testStreamingTranscriptionUpdateCreation() {
         let update = StreamingTranscriptionUpdate(
             text: "Hello world",
+            removedText: "",
+            previousText: "",
             isConfirmed: true,
             confidence: 0.95,
             timestamp: Date(),
@@ -142,6 +144,8 @@ final class StreamingAsrManagerTests: XCTestCase {
         // Test low confidence update
         let lowConfUpdate = StreamingTranscriptionUpdate(
             text: "uncertain text",
+            removedText: "",
+            previousText: "",
             isConfirmed: false,
             confidence: 0.5,
             timestamp: Date(),
@@ -153,6 +157,8 @@ final class StreamingAsrManagerTests: XCTestCase {
         // Test high confidence update
         let highConfUpdate = StreamingTranscriptionUpdate(
             text: "certain text",
+            removedText: "",
+            previousText: "",
             isConfirmed: true,
             confidence: 0.95,
             timestamp: Date(),

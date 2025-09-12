@@ -267,10 +267,12 @@ enum TranscribeCommand {
                     }
 
                     if update.isConfirmed {
-                        await streamingUI.addConfirmedUpdate(update.text)
+                        await streamingUI.updateTranscription(confirmed: update.previousText + update.text, volatile: "")
+//                        await streamingUI.addConfirmedUpdate(update.text)
                         await tracker.addConfirmedUpdate(update.text)
                     } else {
-                        await streamingUI.updateVolatileText(update.text)
+                        await streamingUI.updateTranscription(confirmed: update.previousText, volatile: update.text)
+//                        await streamingUI.updateVolatileText(update.text)
                         await tracker.addVolatileUpdate(update.text)
                     }
                 }

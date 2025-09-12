@@ -325,11 +325,11 @@ public actor StreamingAsrManager {
 
             // Start frame offset is now handled by decoder's timeJump mechanism
 
-            // Call AsrManager directly with deduplication
+            // Call AsrManager without previous tokens - we'll handle deduplication using timestamps
             let (tokens, timestamps, confidences, _) = try await asrManager.transcribeStreamingChunk(
                 windowSamples,
                 source: audioSource,
-                previousTokens: accumulatedTokenTimings.map { $0.tokenId },
+                previousTokens: [],  // Empty array - no token-based deduplication
                 enableDebug: config.enableDebug
             )
 
@@ -345,16 +345,45 @@ public actor StreamingAsrManager {
             let windowFrameOffset = Int(windowTimeOffset / 0.08)  // Convert seconds to frames
             let absoluteTimestamps = timestamps.map { $0 + windowFrameOffset }
 
+//            print("BEFORE:", Array(accumulatedTokenTimings.suffix(10)), "\n=====\n",
+//                  tokens.map { asrManager.vocabulary[$0]! },
+//                  absoluteTimestamps.map { Double($0) * 0.08 },
+//                  timestamps.map { Double($0) * 0.08 },
+//                  windowTimeOffset, windowTimeOffset + (Double(config.leftContextSamples) / 16000) / 2)
+            
+            // Deduplicate tokens based on precise timing separation
+            let (dedupedTokens, dedupedTimestamps, dedupedConfidences, removedFromAccumulated) = deduplicateTokensByTimestamp(
+                tokens: tokens,
+                timestamps: absoluteTimestamps,
+                confidences: confidences,
+                accumulatedTokenTimings: accumulatedTokenTimings,
+                currentChunkStartTime: windowTimeOffset
+            )
+            
+            // Remove potentially incorrect tokens from the end of accumulated tokens
+            
+            let removedText = accumulatedTokenTimings[
+                accumulatedTokenTimings.count - removedFromAccumulated..<accumulatedTokenTimings.count
+            ].map { $0.token }.joined()
+            if removedFromAccumulated > 0 {
+                accumulatedTokenTimings.removeLast(removedFromAccumulated)
+            }
+
+//            print("AFTER:", Array(accumulatedTokenTimings.suffix(10)), "\n=====\n",
+//                  dedupedTokens.map { asrManager.vocabulary[$0]! }, dedupedTimestamps.map { Double($0) * 0.08 })
+
             // Convert only the current chunk tokens to text for clean incremental updates
             // The final result will use all accumulated tokens for proper deduplication
             let interim = asrManager.processTranscriptionResult(
-                tokenIds: tokens,  // Only current chunk tokens for progress updates
-                timestamps: absoluteTimestamps,  // Use absolute frame timestamps
-                confidences: confidences,
+                tokenIds: dedupedTokens,  // Use deduplicated tokens
+                timestamps: dedupedTimestamps,  // Use deduplicated absolute frame timestamps
+                confidences: dedupedConfidences,
                 encoderSequenceLength: 0,
                 audioSamples: windowSamples,
                 processingTime: processingTime
             )
+
+            let previousText = accumulatedTokenTimings.map { $0.token }.joined()
 
             // Accumulate the token timings from the result
             if let tokenTimings = interim.tokenTimings {
@@ -376,6 +405,8 @@ public actor StreamingAsrManager {
 
             let update = StreamingTranscriptionUpdate(
                 text: interim.text,
+                removedText: removedText,
+                previousText: previousText,
                 isConfirmed: shouldConfirm,
                 confidence: interim.confidence,
                 timestamp: Date(),
@@ -486,6 +517,170 @@ public actor StreamingAsrManager {
                 }
             }
         }
+    }
+    
+    /// Deduplicate tokens based on precise timing separation
+    /// Uses the exact overlap between chunks to determine the separation point
+    private func deduplicateTokensByTimestamp(
+        tokens: [Int],
+        timestamps: [Int],
+        confidences: [Float],
+        accumulatedTokenTimings: [TokenTiming],
+        currentChunkStartTime: TimeInterval
+    ) -> (tokens: [Int], timestamps: [Int], confidences: [Float], removedFromAccumulated: Int) {
+        
+        guard !tokens.isEmpty && !accumulatedTokenTimings.isEmpty else {
+            return (tokens, timestamps, confidences, 0)
+        }
+        
+        let punctuationTokens = [7883, 7952, 7948]
+//        let delta: Double = 0.08 / 2 + 0.01 // Possible token misplacement.
+        
+        // Calculate the separation time based on the overlap determined by leftContextSamples
+        // Current chunk start time in frame units
+//        let currentChunkStartFrame = Int(currentChunkStartTime / 0.08)
+        
+        // The overlap is determined by leftContextSamples - this is how much the current chunk
+        // overlaps with the previous chunk
+//        let leftContextFrames = Int(Double(config.leftContextSamples) / 16000.0 / 0.08)  // Convert samples to frames
+        
+        // Calculate separation point: current chunk start + half of the overlap
+//        let separationFrame = currentChunkStartFrame + (leftContextFrames / 2)
+//        let separationFrame = Int((accumulatedTokenTimings.last!.endTime + Double(timestamps[0]) * 0.08) * 0.5 / 0.08)
+//        print("SEPARATION TIME", Double(separationTime) * 0.08)
+        
+        // Skip all leading punctuation tokens.
+//        var firstTimestamp: Int = 0
+//        for i in 0..<tokens.count {
+//            if !punctuationTokens.contains(tokens[i]) {
+//                firstTimestamp = timestamps[i]
+//                break
+//            }
+//        }
+//        
+//        guard firstTimestamp != 0 else {
+//            return (tokens, timestamps, confidences, 0)
+//        }
+//        
+//        let separationTime = (accumulatedTokenTimings.last!.endTime + Double(firstTimestamp) * 0.08) * 0.5
+
+        var separationTime = currentChunkStartTime +
+            Double(config.leftContextSamples + config.rightContextSamples / 2) / 16000
+
+        var separationFrame = Int(round(separationTime / 0.08))
+        
+//        print("SEPARATION TIME", Double(separationTime), separationFrame)
+
+        // Keep tokens from new chunk that are at or after the separation point
+        var keptTokens: [Int] = []
+        var keptTimestamps: [Int] = []
+        var keptConfidences: [Float] = []
+        
+        for i in 0..<tokens.count {
+            let tokenTimestamp = timestamps[i]
+            if tokenTimestamp >= separationFrame {
+//            let tokenTimestamp = Double(timestamps[i]) * 0.08
+//            if tokenTimestamp > separationTime {
+                keptTokens.append(tokens[i])
+                keptTimestamps.append(timestamps[i])
+                keptConfidences.append(confidences[i])
+            }
+        }
+        
+        guard !keptTokens.isEmpty else {
+            return (keptTokens, keptTimestamps, keptConfidences, 0)
+        }
+        
+        separationTime = Double(keptTimestamps[0]) * 0.08
+        separationFrame = Int(round(separationTime / 0.08))
+
+//        print("SEPARATION TIME (2)", Double(separationTime), separationFrame)
+
+        // Remove tokens from accumulated that are after the separation point
+        // Keep tokens that are exactly at the separation point
+        var removedFromAccumulated = 0
+        for i in (0..<accumulatedTokenTimings.count).reversed() {
+            let tokenStartFrame = Int(round(accumulatedTokenTimings[i].startTime / 0.08))
+            if tokenStartFrame > separationFrame {
+//            let tokenStartTime = accumulatedTokenTimings[i].startTime
+//            if tokenStartTime > separationTime {
+                removedFromAccumulated += 1
+            } else {
+                break
+            }
+        }
+        
+//        print("REMOVED FROM ACCUMULATED: \(removedFromAccumulated)")
+        
+        // Handle boundary case: if we have tokens at the separation point from both sides,
+        // compare the last remaining accumulated token with the first remaining new token
+        if removedFromAccumulated < accumulatedTokenTimings.count && !keptTokens.isEmpty {
+            let lastAccumulatedIndex = accumulatedTokenTimings.count - 1 - removedFromAccumulated
+            let lastAccumulatedTokenTiming = accumulatedTokenTimings[lastAccumulatedIndex]
+            let lastAccumulatedTokenStartFrame = Int(round(lastAccumulatedTokenTiming.startTime / 0.08))
+            let lastAccumulatedTokenEndFrame = Int(round(lastAccumulatedTokenTiming.endTime / 0.08))
+            let firstNewTokenTimestamp = keptTimestamps[0]
+            
+            if firstNewTokenTimestamp >= lastAccumulatedTokenStartFrame &&
+                firstNewTokenTimestamp <= lastAccumulatedTokenEndFrame {
+                if lastAccumulatedTokenTiming.tokenId == keptTokens[0] {
+                    // Same token at boundary - remove the duplicate from new tokens
+                    keptTokens.removeFirst()
+                    keptTimestamps.removeFirst()
+                    keptConfidences.removeFirst()
+                } else if keptTokens.count > 1 && removedFromAccumulated < accumulatedTokenTimings.count - 1 {
+                    // We have at least two tokens on both side.
+                    let preLastAccumulatedTokenTiming = accumulatedTokenTimings[lastAccumulatedIndex - 1]
+                    if keptTokens[1] == lastAccumulatedTokenTiming.tokenId &&
+                        keptTokens[0] == preLastAccumulatedTokenTiming.tokenId {
+                        // Two tokens are the same at the boundary. Remove them both.
+                        // TODO: Check timings if misfire.
+                        keptTokens.removeFirst(2)
+                        keptTimestamps.removeFirst(2)
+                        keptConfidences.removeFirst(2)
+                    } else if firstNewTokenTimestamp == Int(round(preLastAccumulatedTokenTiming.endTime / 0.08)) &&
+                                keptTokens[0] == preLastAccumulatedTokenTiming.tokenId {
+                        // Most likely we have a mistakenly recognized token at the end of accumulated
+                        // tokens. Thus remove two previously accumulated tokens.
+                        removedFromAccumulated += 2
+//                        print("REMOVED FROM ACCUMULATED (2): \(removedFromAccumulated)")
+                    }
+                }
+            }
+            
+//            let firstNewTokenStartTime = Double(keptTimestamps[0]) * 0.08
+//            
+//            if lastAccumulatedTokenTiming.startTime <= firstNewTokenStartTime &&
+//                lastAccumulatedTokenTiming.endTime >= firstNewTokenStartTime {
+//                let firstNewToken = keptTokens[0]
+//                
+//                if lastAccumulatedTokenTiming.tokenId == firstNewToken {
+//                    // Same token at boundary - remove the duplicate from new tokens
+//                    keptTokens.removeFirst()
+//                    keptTimestamps.removeFirst()
+//                    keptConfidences.removeFirst()
+//                }
+//            }
+            
+//            let lastAccumulatedTokenStartFrame = Int(accumulatedTokenTimings[lastAccumulatedIndex].startTime / 0.08)
+//            let firstNewTokenTimestamp = keptTimestamps[0]
+            
+            // Only compare if both tokens are actually at the separation boundary
+//            if lastAccumulatedTokenStartFrame == separationFrame && firstNewTokenTimestamp == separationFrame {
+//                let lastAccumulatedToken = accumulatedTokenTimings[lastAccumulatedIndex].tokenId
+//                let firstNewToken = keptTokens[0]
+//                
+//                if lastAccumulatedToken == firstNewToken {
+//                    // Same token at boundary - remove the duplicate from new tokens
+//                    keptTokens.removeFirst()
+//                    keptTimestamps.removeFirst()
+//                    keptConfidences.removeFirst()
+//                }
+                // If different tokens, keep both (they represent different content)
+//            }
+        }
+                
+        return (keptTokens, keptTimestamps, keptConfidences, removedFromAccumulated)
     }
 }
 
@@ -609,9 +804,15 @@ public struct StreamingAsrConfig: Sendable {
 /// Transcription update from streaming ASR
 @available(macOS 13.0, iOS 16.0, *)
 public struct StreamingTranscriptionUpdate: Sendable {
-    /// The transcribed text
+    /// The transcribed text (update).
     public let text: String
 
+    /// Suffix of the previously transcribed texts that was removed.
+    public let removedText: String
+    
+    /// Full transcribed text before the update (without removedText suffic).
+    public let previousText: String
+    
     /// Whether this text is confirmed (high confidence) or volatile (may change)
     public let isConfirmed: Bool
 
@@ -626,12 +827,16 @@ public struct StreamingTranscriptionUpdate: Sendable {
 
     public init(
         text: String,
+        removedText: String,
+        previousText: String,
         isConfirmed: Bool,
         confidence: Float,
         timestamp: Date,
         tokenTimings: [TokenTiming]?
     ) {
         self.text = text
+        self.removedText = removedText
+        self.previousText = previousText
         self.isConfirmed = isConfirmed
         self.confidence = confidence
         self.timestamp = timestamp
