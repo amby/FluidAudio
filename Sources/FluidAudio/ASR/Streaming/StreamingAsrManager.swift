@@ -533,7 +533,7 @@ public actor StreamingAsrManager {
             return (tokens, timestamps, confidences, 0)
         }
         
-        let punctuationTokens = [7883, 7952, 7948]
+        let punctuationTokens = [7883, 7952, 7948, 7877, 7956, 8020]
 //        let delta: Double = 0.08 / 2 + 0.01 // Possible token misplacement.
         
         // Calculate the separation time based on the overlap determined by leftContextSamples
@@ -617,33 +617,39 @@ public actor StreamingAsrManager {
         if removedFromAccumulated < accumulatedTokenTimings.count && !keptTokens.isEmpty {
             let lastAccumulatedIndex = accumulatedTokenTimings.count - 1 - removedFromAccumulated
             let lastAccumulatedTokenTiming = accumulatedTokenTimings[lastAccumulatedIndex]
-            let lastAccumulatedTokenStartFrame = Int(round(lastAccumulatedTokenTiming.startTime / 0.08))
-            let lastAccumulatedTokenEndFrame = Int(round(lastAccumulatedTokenTiming.endTime / 0.08))
-            let firstNewTokenTimestamp = keptTimestamps[0]
-            
-            if firstNewTokenTimestamp >= lastAccumulatedTokenStartFrame &&
-                firstNewTokenTimestamp <= lastAccumulatedTokenEndFrame {
-                if lastAccumulatedTokenTiming.tokenId == keptTokens[0] {
-                    // Same token at boundary - remove the duplicate from new tokens
-                    keptTokens.removeFirst()
-                    keptTimestamps.removeFirst()
-                    keptConfidences.removeFirst()
-                } else if keptTokens.count > 1 && removedFromAccumulated < accumulatedTokenTimings.count - 1 {
-                    // We have at least two tokens on both side.
-                    let preLastAccumulatedTokenTiming = accumulatedTokenTimings[lastAccumulatedIndex - 1]
-                    if keptTokens[1] == lastAccumulatedTokenTiming.tokenId &&
-                        keptTokens[0] == preLastAccumulatedTokenTiming.tokenId {
-                        // Two tokens are the same at the boundary. Remove them both.
-                        // TODO: Check timings if misfire.
-                        keptTokens.removeFirst(2)
-                        keptTimestamps.removeFirst(2)
-                        keptConfidences.removeFirst(2)
-                    } else if firstNewTokenTimestamp == Int(round(preLastAccumulatedTokenTiming.endTime / 0.08)) &&
-                                keptTokens[0] == preLastAccumulatedTokenTiming.tokenId {
-                        // Most likely we have a mistakenly recognized token at the end of accumulated
-                        // tokens. Thus remove two previously accumulated tokens.
-                        removedFromAccumulated += 2
-//                        print("REMOVED FROM ACCUMULATED (2): \(removedFromAccumulated)")
+
+            if punctuationTokens.contains(lastAccumulatedTokenTiming.tokenId) && punctuationTokens.contains(keptTokens[0]) {
+                // Punctuation tokens on both ends. Keep the new one.
+                removedFromAccumulated += 1
+            } else {
+                let lastAccumulatedTokenStartFrame = Int(round(lastAccumulatedTokenTiming.startTime / 0.08))
+                let lastAccumulatedTokenEndFrame = Int(round(lastAccumulatedTokenTiming.endTime / 0.08))
+                let firstNewTokenTimestamp = keptTimestamps[0]
+                
+                if firstNewTokenTimestamp >= lastAccumulatedTokenStartFrame &&
+                    firstNewTokenTimestamp <= lastAccumulatedTokenEndFrame {
+                    if lastAccumulatedTokenTiming.tokenId == keptTokens[0] {
+                        // Same token at boundary - remove the duplicate from new tokens
+                        keptTokens.removeFirst()
+                        keptTimestamps.removeFirst()
+                        keptConfidences.removeFirst()
+                    } else if keptTokens.count > 1 && removedFromAccumulated < accumulatedTokenTimings.count - 1 {
+                        // We have at least two tokens on both side.
+                        let preLastAccumulatedTokenTiming = accumulatedTokenTimings[lastAccumulatedIndex - 1]
+                        if keptTokens[1] == lastAccumulatedTokenTiming.tokenId &&
+                            keptTokens[0] == preLastAccumulatedTokenTiming.tokenId {
+                            // Two tokens are the same at the boundary. Remove them both.
+                            // TODO: Check timings if misfire.
+                            keptTokens.removeFirst(2)
+                            keptTimestamps.removeFirst(2)
+                            keptConfidences.removeFirst(2)
+                        } else if firstNewTokenTimestamp == Int(round(preLastAccumulatedTokenTiming.endTime / 0.08)) &&
+                                    keptTokens[0] == preLastAccumulatedTokenTiming.tokenId {
+                            // Most likely we have a mistakenly recognized token at the end of accumulated
+                            // tokens. Thus remove two previously accumulated tokens.
+                            removedFromAccumulated += 2
+                            //                        print("REMOVED FROM ACCUMULATED (2): \(removedFromAccumulated)")
+                        }
                     }
                 }
             }
