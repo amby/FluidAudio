@@ -33,8 +33,8 @@ public actor StreamingAsrManager {
     private var nextWindowCenterStart: Int = 0  // absolute index where next chunk (center) begins
 
     // Two-tier transcription state (like Apple's Speech API)
-    public private(set) var volatileTranscript: String = ""
-    public private(set) var confirmedTranscript: String = ""
+    public private(set) var volatileTokenCount: Int = 0
+    public private(set) var confirmedTokenCount: Int = 0
 
     /// The audio source this stream is configured for
     public var source: AudioSource {
@@ -178,10 +178,8 @@ public actor StreamingAsrManager {
             )
             finalResult = finalAsrResult
         } else {
-            // Fallback to text concatenation if no tokens available
-            let fallbackText = confirmedTranscript + volatileTranscript
             finalResult = ASRResult(
-                text: fallbackText,
+                text: "",
                 confidence: 0.0,
                 duration: Date().timeIntervalSince(startTime ?? Date()),
                 processingTime: 0,
@@ -195,8 +193,8 @@ public actor StreamingAsrManager {
 
     /// Reset the transcriber for a new session
     public func reset() async throws {
-        volatileTranscript = ""
-        confirmedTranscript = ""
+        volatileTokenCount = 0
+        confirmedTokenCount = 0
         processedChunks = 0
         startTime = Date()
         sampleBuffer.removeAll(keepingCapacity: false)
@@ -361,10 +359,9 @@ public actor StreamingAsrManager {
             )
             
             // Remove potentially incorrect tokens from the end of accumulated tokens
-            
-            let removedText = accumulatedTokenTimings[
-                accumulatedTokenTimings.count - removedFromAccumulated..<accumulatedTokenTimings.count
-            ].map { $0.token }.joined()
+//            let removedText = accumulatedTokenTimings[
+//                accumulatedTokenTimings.count - removedFromAccumulated..<accumulatedTokenTimings.count
+//            ].map { $0.token }.joined()
             if removedFromAccumulated > 0 {
                 accumulatedTokenTimings.removeLast(removedFromAccumulated)
             }
@@ -383,8 +380,21 @@ public actor StreamingAsrManager {
                 processingTime: processingTime
             )
 
-            let previousText = accumulatedTokenTimings.map { $0.token }.joined()
-
+            let tailTimestamp = Int((windowTimeOffset +
+                                     (windowTimeOffset > 0 ? config.leftContextSeconds : 0) +
+                                     config.chunkSeconds) / 0.08)
+//            print("TAIL TIMESTAMP: \(Double(tailTimestamp) * 0.08)")
+            var tailTokenCount = 0
+            let tokenTimings = interim.tokenTimings!
+            for i in (0..<tokenTimings.count).reversed() {
+                let tokenTiming = tokenTimings[i]
+                tailTokenCount += 1
+                if Int(tokenTiming.startTime / 0.08) < tailTimestamp && tokenTiming.token.starts(with: " ") {
+                    // Stop on word boundary.
+                    break
+                }
+            }
+            
             // Accumulate the token timings from the result
             if let tokenTimings = interim.tokenTimings {
                 accumulatedTokenTimings.append(contentsOf: tokenTimings)
@@ -394,26 +404,67 @@ public actor StreamingAsrManager {
                 "Chunk \(self.processedChunks): '\(interim.text)', time: \(String(format: "%.3f", processingTime))s)"
             )
 
+//            print("TAIL TOKEN COUNT: \(tailTokenCount), REMOVED TOKEN COUNT: \(removedFromAccumulated)")
+            
             // Apply confidence-based confirmation logic (uses configured threshold)
-            await updateTranscriptionState(with: interim)
+            let (curConfirmedTokenCount, curVolatileTokenCount) = await updateTranscriptionState(
+                with: interim, tailTokenCount: tailTokenCount, removedTokenCount: removedFromAccumulated)
 
+            if curConfirmedTokenCount != 0 {
+                let from = accumulatedTokenTimings.count - (curConfirmedTokenCount + curVolatileTokenCount)
+                let to = accumulatedTokenTimings.count - curVolatileTokenCount
+                let confirmedText = accumulatedTokenTimingsToText(from: from, to: to)
+                let tokenTimings = Array(accumulatedTokenTimings[from..<to])
+                
+//                print("CONFIRMED TEXT: \(confirmedText)")
+                
+                let update = StreamingTranscriptionUpdate(
+                    text: confirmedText,
+                    isConfirmed: true,
+                    confidence: interim.confidence,
+                    timestamp: Date(),
+                    tokenTimings: tokenTimings
+                )
+
+                updateContinuation?.yield(update)
+            }
+            
+            if curVolatileTokenCount != 0 {
+                let from = accumulatedTokenTimings.count - curVolatileTokenCount
+                let to = accumulatedTokenTimings.count
+                let volatileText = accumulatedTokenTimingsToText(from: from, to: to)
+                let tokenTimings = Array(accumulatedTokenTimings[from..<to])
+
+//                print("VOLAITLE TEXT: \(volatileText)")
+                
+                let update = StreamingTranscriptionUpdate(
+                    text: volatileText,
+                    isConfirmed: false,
+                    confidence: interim.confidence,
+                    timestamp: Date(),
+                    tokenTimings: tokenTimings
+                )
+
+                updateContinuation?.yield(update)
+            }
+            
             // Emit update based on progressive confidence model
-            let totalAudioProcessed = Double(bufferStartIndex + sampleBuffer.count) / 16000.0
-            let hasMinimumContext = totalAudioProcessed >= config.minContextForConfirmation
-            let isHighConfidence = Double(interim.confidence) >= config.confirmationThreshold
-            let shouldConfirm = isHighConfidence && hasMinimumContext
-
-            let update = StreamingTranscriptionUpdate(
-                text: interim.text,
-                removedText: removedText,
-                previousText: previousText,
-                isConfirmed: shouldConfirm,
-                confidence: interim.confidence,
-                timestamp: Date(),
-                tokenTimings: interim.tokenTimings
-            )
-
-            updateContinuation?.yield(update)
+//            let totalAudioProcessed = Double(bufferStartIndex + sampleBuffer.count) / 16000.0
+//            let hasMinimumContext = totalAudioProcessed >= config.minContextForConfirmation
+//            let isHighConfidence = Double(interim.confidence) >= config.confirmationThreshold
+//            let shouldConfirm = isHighConfidence && hasMinimumContext
+//
+//            let update = StreamingTranscriptionUpdate(
+//                text: interim.text,
+//                removedText: removedText,
+//                previousText: previousText,
+//                isConfirmed: shouldConfirm,
+//                confidence: interim.confidence,
+//                timestamp: Date(),
+//                tokenTimings: interim.tokenTimings
+//            )
+//
+//            updateContinuation?.yield(update)
 
         } catch {
             let streamingError = StreamingAsrError.modelProcessingFailed(error)
@@ -423,9 +474,19 @@ public actor StreamingAsrManager {
             await attemptErrorRecovery(error: streamingError)
         }
     }
+    
+    /// Converts a specified subset of accumulated token timings to text.
+    private func accumulatedTokenTimingsToText(from: Int, to: Int) -> String {
+        return accumulatedTokenTimings[from..<to]
+            .map { $0.token }
+            .joined()
+            .replacingOccurrences(of: "▁", with: " ")
+    }
 
     /// Update transcription state based on confidence and context duration
-    private func updateTranscriptionState(with result: ASRResult) async {
+    private func updateTranscriptionState(with result: ASRResult,
+                                          tailTokenCount: Int,
+                                          removedTokenCount: Int) async -> (Int, Int) {
         let totalAudioProcessed = Double(bufferStartIndex + sampleBuffer.count) / 16000.0
         let hasMinimumContext = totalAudioProcessed >= config.minContextForConfirmation
         let isHighConfidence = Double(result.confidence) >= config.confirmationThreshold
@@ -436,26 +497,23 @@ public actor StreamingAsrManager {
         let shouldConfirm = isHighConfidence && hasMinimumContext
 
         if shouldConfirm {
-            // Move volatile text to confirmed and set new text as volatile
-            if !volatileTranscript.isEmpty {
-                var components: [String] = []
-                if !confirmedTranscript.isEmpty {
-                    components.append(confirmedTranscript)
-                }
-                components.append(volatileTranscript)
-                confirmedTranscript = components.joined(separator: " ")
-            }
-            volatileTranscript = result.text
+            let curConfirmedTokenCount = (result.tokenTimings!.count - tailTokenCount) +
+                (volatileTokenCount - removedTokenCount)
+            confirmedTokenCount += curConfirmedTokenCount
+            volatileTokenCount = tailTokenCount
+            
             logger.debug(
                 "CONFIRMED (\(result.confidence), \(String(format: "%.1f", totalAudioProcessed))s context): promoted to confirmed; new volatile '\(result.text)'"
             )
+            return (curConfirmedTokenCount, tailTokenCount)
         } else {
             // Only update volatile text (hypothesis)
-            volatileTranscript = result.text
+            self.volatileTokenCount += result.tokenTimings!.count
             let reason =
                 !hasMinimumContext
                 ? "insufficient context (\(String(format: "%.1f", totalAudioProcessed))s)" : "low confidence"
             logger.debug("VOLATILE (\(result.confidence)): \(reason) - updated volatile '\(result.text)'")
+            return (0, result.tokenTimings!.count)
         }
     }
 
@@ -564,8 +622,7 @@ public actor StreamingAsrManager {
 //        
 //        let separationTime = (accumulatedTokenTimings.last!.endTime + Double(firstTimestamp) * 0.08) * 0.5
 
-        var separationTime = currentChunkStartTime +
-            Double(config.leftContextSamples + config.rightContextSamples / 2) / 16000
+        var separationTime = currentChunkStartTime + config.leftContextSeconds + config.rightContextSeconds / 2
 
         var separationFrame = Int(round(separationTime / 0.08))
         
@@ -812,12 +869,6 @@ public struct StreamingAsrConfig: Sendable {
 public struct StreamingTranscriptionUpdate: Sendable {
     /// The transcribed text (update).
     public let text: String
-
-    /// Suffix of the previously transcribed texts that was removed.
-    public let removedText: String
-    
-    /// Full transcribed text before the update (without removedText suffic).
-    public let previousText: String
     
     /// Whether this text is confirmed (high confidence) or volatile (may change)
     public let isConfirmed: Bool
@@ -833,16 +884,12 @@ public struct StreamingTranscriptionUpdate: Sendable {
 
     public init(
         text: String,
-        removedText: String,
-        previousText: String,
         isConfirmed: Bool,
         confidence: Float,
         timestamp: Date,
         tokenTimings: [TokenTiming]?
     ) {
         self.text = text
-        self.removedText = removedText
-        self.previousText = previousText
         self.isConfirmed = isConfirmed
         self.confidence = confidence
         self.timestamp = timestamp

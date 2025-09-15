@@ -17,12 +17,12 @@ final class StreamingAsrManagerTests: XCTestCase {
 
     func testInitializationWithDefaultConfig() async throws {
         let manager = StreamingAsrManager()
-        let volatileTranscript = await manager.volatileTranscript
-        let confirmedTranscript = await manager.confirmedTranscript
+        let volatileTokenCount = await manager.volatileTokenCount
+        let confirmedTokenCount = await manager.confirmedTokenCount
         let source = await manager.source
 
-        XCTAssertEqual(volatileTranscript, "")
-        XCTAssertEqual(confirmedTranscript, "")
+        XCTAssertEqual(volatileTokenCount, 0)
+        XCTAssertEqual(confirmedTokenCount, 0)
         XCTAssertEqual(source, .microphone)
     }
 
@@ -33,11 +33,11 @@ final class StreamingAsrManagerTests: XCTestCase {
             enableDebug: true
         )
         let manager = StreamingAsrManager(config: config)
-        let volatileTranscript = await manager.volatileTranscript
-        let confirmedTranscript = await manager.confirmedTranscript
+        let volatileTokenCount = await manager.volatileTokenCount
+        let confirmedTokenCount = await manager.confirmedTokenCount
 
-        XCTAssertEqual(volatileTranscript, "")
-        XCTAssertEqual(confirmedTranscript, "")
+        XCTAssertEqual(volatileTokenCount, 0)
+        XCTAssertEqual(confirmedTokenCount, 0)
     }
 
     // MARK: - Configuration Tests
@@ -126,8 +126,6 @@ final class StreamingAsrManagerTests: XCTestCase {
     func testStreamingTranscriptionUpdateCreation() {
         let update = StreamingTranscriptionUpdate(
             text: "Hello world",
-            removedText: "",
-            previousText: "",
             isConfirmed: true,
             confidence: 0.95,
             timestamp: Date(),
@@ -144,8 +142,6 @@ final class StreamingAsrManagerTests: XCTestCase {
         // Test low confidence update
         let lowConfUpdate = StreamingTranscriptionUpdate(
             text: "uncertain text",
-            removedText: "",
-            previousText: "",
             isConfirmed: false,
             confidence: 0.5,
             timestamp: Date(),
@@ -157,8 +153,6 @@ final class StreamingAsrManagerTests: XCTestCase {
         // Test high confidence update
         let highConfUpdate = StreamingTranscriptionUpdate(
             text: "certain text",
-            removedText: "",
-            previousText: "",
             isConfirmed: true,
             confidence: 0.95,
             timestamp: Date(),
