@@ -43,7 +43,7 @@ public enum ANEOptimizer {
 
     /// Configure optimal compute units for each model type
     public static func optimalComputeUnits(for modelType: ModelType) -> MLComputeUnits {
-        // Testing shows CPU+ANE is fastest for all models, including melspectrogram
+        // Testing shows CPU+ANE is fastest for all models, including fused mel encoder
         return .cpuAndNeuralEngine
     }
 
@@ -64,21 +64,7 @@ public enum ANEOptimizer {
         }
 
         // Calculate byte offset
-        let elementSize: Int
-        switch sourceArray.dataType {
-        case .float16:
-            elementSize = 2
-        case .float32:
-            elementSize = 4
-        case .float64:
-            elementSize = 8
-        case .int32:
-            elementSize = 4
-        case .double:
-            elementSize = 8
-        @unknown default:
-            elementSize = 4
-        }
+        let elementSize = ANEMemoryUtils.getElementSize(for: sourceArray.dataType)
 
         let byteOffset = offset * elementSize
         let offsetPointer = sourceArray.dataPointer.advanced(by: byteOffset)
@@ -145,8 +131,7 @@ public enum ANEOptimizer {
 
     /// Model type enumeration for compute unit selection
     public enum ModelType {
-        case melSpectrogram
-        case encoder
+        case melEncoder
         case decoder
         case joint
     }

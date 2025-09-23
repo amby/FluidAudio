@@ -177,30 +177,6 @@ final class CoreMLDiarizerTests: XCTestCase {
         manager.cleanup()
         XCTAssertFalse(manager.isAvailable, "Manager should not be available after cleanup")
     }
-
-    // Removed deprecated test for compareSpeakerSimilarity method
-    // func testSpeakerComparison() async {
-    //     let audio1 = Array(0..<16000).map { i in
-    //         sin(Float(i) * 0.01) * 0.5
-    //     }
-    //     let audio2 = Array(0..<16000).map { i in
-    //         sin(Float(i) * 0.02) * 0.5
-    //     }
-    //
-    //     let config = DiarizerConfig()
-    //     let manager = DiarizerManager(config: config)
-    //
-    //     do {
-    //         let similarity = try await manager.compareSpeakerSimilarity(audio1: audio1, audio2: audio2)
-    //         XCTAssertGreaterThanOrEqual(similarity, 0, "Similarity should be >= 0")
-    //         XCTAssertLessThanOrEqual(similarity, 100, "Similarity should be <= 100")
-    //     } catch DiarizerError.notInitialized {
-    //         // Expected error in test environment
-    //         print("Speaker comparison failed due to not being initialized (expected)")
-    //     } catch {
-    //         XCTFail("Unexpected error: \(error)")
-    //     }
-    // }
 }
 
 // MARK: - Model Loading Tests
@@ -231,7 +207,7 @@ extension CoreMLDiarizerTests {
 
         // Check that the model files exist in the download directory
         let repoPath = downloadDir.deletingLastPathComponent()
-            .appendingPathComponent(DownloadUtils.Repo.diarizer.folderName)
+            .appendingPathComponent(Repo.diarizer.folderName)
 
         // Clean up any unwanted models that might have been downloaded
         let unwantedModels = ["wespeaker.mlmodelc", "wespeaker_int8.mlmodelc"]
@@ -301,7 +277,7 @@ extension CoreMLDiarizerTests {
             appSupport
             .appendingPathComponent("FluidAudio", isDirectory: true)
             .appendingPathComponent("Models", isDirectory: true)
-            .appendingPathComponent(DownloadUtils.Repo.diarizer.folderName, isDirectory: true)
+            .appendingPathComponent(Repo.diarizer.folderName, isDirectory: true)
 
         // Clean up any unwanted models that might have been downloaded
         let unwantedModels = ["wespeaker.mlmodelc", "wespeaker_int8.mlmodelc"]
@@ -422,24 +398,15 @@ final class CoreMLBackendIntegrationTests: XCTestCase {
             diarizer.initialize(models: try await .downloadIfNeeded())
             XCTAssertTrue(
                 diarizer.isAvailable, "Should be available after successful initialization")
-            print("CoreML diarizer initialized successfully!")
 
             // Test that we can perform basic operations
             let testSamples = Array(repeating: Float(0.5), count: 16000)
 
-            do {
-                let result = try diarizer.performCompleteDiarization(testSamples, sampleRate: 16000)
-                print("CoreML diarization completed, found \(result.segments.count) segments")
-            } catch {
-                print("Segmentation test completed (may need more realistic audio): \(error)")
-            }
+            let _ = try diarizer.performCompleteDiarization(testSamples, sampleRate: 16000)
 
             diarizer.cleanup()
-
         } catch {
             // This is expected in test environment - models might not download
-            print(
-                "CoreML initialization test completed (expected in test environment): \(error)")
             XCTAssertFalse(diarizer.isAvailable, "Should not be available if initialization failed")
         }
     }

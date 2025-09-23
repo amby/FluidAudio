@@ -8,7 +8,7 @@ final class AbsoluteTimingTests: XCTestCase {
     private var manager: AsrManager!
     
     override func setUp() async throws {
-        manager = AsrManager(config: ASRConfig(sampleRate: 16000, enableDebug: false))
+        manager = AsrManager(config: ASRConfig(sampleRate: 16000))
         // Note: We don't initialize models for these tests as we're testing timing logic only
     }
     

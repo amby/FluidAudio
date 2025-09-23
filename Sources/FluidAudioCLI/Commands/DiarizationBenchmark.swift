@@ -252,7 +252,7 @@ enum StreamDiarizationBenchmark {
 
             for iteration in 1...iterations {
                 if iterations > 1 {
-                    logger.info("\n  Iteration \(iteration)/\(iterations)")
+                    logger.info("  Iteration \(iteration)/\(iterations)")
                 }
 
                 if let result = await processMeeting(
@@ -270,14 +270,14 @@ enum StreamDiarizationBenchmark {
                     iterationResults.append(result)
 
                     // Print summary for this iteration
-                    logger.info("\n📊 Results for \(meetingName) (iteration \(iteration)):")
+                    logger.info("📊 Results for \(meetingName) (iteration \(iteration)):")
                     logger.info("  DER: \(String(format: "%.1f", result.der))%")
                     logger.info("  JER: \(String(format: "%.1f", result.jer))%")
                     logger.info("  RTFx: \(String(format: "%.1f", result.rtfx))x")
                     logger.info("  Speakers: \(result.detectedSpeakers) detected / \(result.groundTruthSpeakers) truth")
 
                     // Print timing breakdown
-                    logger.info("\n⏱️ Diarization Pipeline Timing Breakdown:")
+                    logger.info("⏱️ Diarization Pipeline Timing Breakdown:")
                     logger.info("  Time spent in each stage of streaming diarization:\n")
                     logger.info("  Stage               Time (s)    %     Description")
                     logger.info("  " + String(repeating: "-", count: 60))
@@ -317,7 +317,7 @@ enum StreamDiarizationBenchmark {
                 allResults.append(avgResult)
 
                 if iterations > 1 {
-                    logger.info("\n📊 Average over \(iterations) iterations:")
+                    logger.info("📊 Average over \(iterations) iterations:")
                     logger.info(
                         "  DER: \(String(format: "%.1f", avgResult.der))% ± \(String(format: "%.1f", standardDeviation(iterationResults.map { $0.der })))%"
                     )
@@ -364,7 +364,7 @@ enum StreamDiarizationBenchmark {
         do {
             // Track audio loading time
             let audioLoadStart = Date()
-            let audioData = try loadAudioFile(at: audioPath)
+            let audioData = try await loadAudioFile(at: audioPath)
             let audioLoadTime = Date().timeIntervalSince(audioLoadStart)
             let totalDuration = Double(audioData.count) / 16000.0
 
@@ -843,54 +843,9 @@ enum StreamDiarizationBenchmark {
         ).path
     }
 
-    private static func loadAudioFile(at path: String) throws -> [Float] {
-        let url = URL(fileURLWithPath: path)
-        let file = try AVAudioFile(forReading: url)
-
-        let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16000,
-            channels: 1,
-            interleaved: false
-        )!
-
-        let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: UInt32(file.length)
-        )!
-
-        // Convert to 16kHz if needed
-        if file.processingFormat.sampleRate != 16000 {
-            let converter = AVAudioConverter(from: file.processingFormat, to: format)!
-            let inputBuffer = AVAudioPCMBuffer(
-                pcmFormat: file.processingFormat,
-                frameCapacity: AVAudioFrameCount(file.length)
-            )!
-
-            try file.read(into: inputBuffer)
-
-            let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-                outStatus.pointee = .haveData
-                return inputBuffer
-            }
-
-            var error: NSError?
-            _ = converter.convert(to: buffer, error: &error, withInputFrom: inputBlock)
-            if let error = error {
-                throw error
-            }
-        } else {
-            try file.read(into: buffer)
-        }
-
-        let floatArray = Array(
-            UnsafeBufferPointer(
-                start: buffer.floatChannelData?[0],
-                count: Int(buffer.frameLength)
-            )
-        )
-
-        return floatArray
+    private static func loadAudioFile(at path: String) async throws -> [Float] {
+        let converter = AudioConverter()
+        return try converter.resampleAudioFile(path: path)
     }
 
     private static func averageResults(_ results: [BenchmarkResult]) -> BenchmarkResult {
@@ -939,12 +894,12 @@ enum StreamDiarizationBenchmark {
     private static func printFinalSummary(results: [BenchmarkResult]) {
         guard !results.isEmpty else { return }
 
-        logger.info("\n" + String(repeating: "=", count: 80))
+        logger.info("" + String(repeating: "=", count: 80))
         logger.info("DIARIZATION BENCHMARK SUMMARY")
         logger.info(String(repeating: "=", count: 80))
 
         // Print detailed results table sorted by DER
-        logger.info("\n📋 Results Sorted by DER (Best → Worst):")
+        logger.info("📋 Results Sorted by DER (Best → Worst):")
         logger.info(String(repeating: "-", count: 90))
         // Simple header without String(format:)
         logger.info("Meeting        DER %    JER %    Miss %     FA %     SE %   Speakers     RTFx")
@@ -985,7 +940,7 @@ enum StreamDiarizationBenchmark {
         logger.info(String(repeating: "=", count: 90))
 
         // Check against targets
-        logger.info("\n✅ Target Check:")
+        logger.info("✅ Target Check:")
         if avgDER < 30 {
             logger.info("  ✅ DER < 30% (achieved: \(String(format: "%.1f", avgDER))%)")
         } else {
@@ -1033,7 +988,7 @@ enum StreamDiarizationBenchmark {
         do {
             let data = try JSONSerialization.data(withJSONObject: jsonData, options: .prettyPrinted)
             try data.write(to: URL(fileURLWithPath: path))
-            logger.info("\n💾 JSON results saved to: \(path)")
+            logger.info("💾 JSON results saved to: \(path)")
         } catch {
             logger.error("❌ Failed to save JSON: \(error)")
         }

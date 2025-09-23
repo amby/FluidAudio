@@ -78,12 +78,6 @@ enum TranscribeCommand {
             i += 1
         }
 
-        logger.info("Audio Transcription")
-        logger.info("===================\n")
-
-        // Test loading audio at different sample rates
-        await testAudioConversion(audioFile: audioFile)
-
         if streamingMode {
             logger.info(
                 "Streaming mode enabled: simulating real-time audio with 1-second chunks.\n"
@@ -95,39 +89,8 @@ enum TranscribeCommand {
         }
     }
 
-    /// Test audio conversion capabilities
-    private static func testAudioConversion(audioFile: String) async {
-        logger.info("Testing Audio Conversion")
-        logger.info("--------------------------")
-
-        do {
-            // Load the audio file info
-            let audioFileURL = URL(fileURLWithPath: audioFile)
-            let audioFileHandle = try AVAudioFile(forReading: audioFileURL)
-            let format = audioFileHandle.processingFormat
-
-            logger.info("Original format:")
-            logger.info("  Sample rate: \(format.sampleRate) Hz")
-            logger.info("  Channels: \(format.channelCount)")
-            logger.info("  Format: \(format.commonFormat.rawValue)")
-            logger.info(
-                "  Duration: \(String(format: "%.2f", Double(audioFileHandle.length) / format.sampleRate)) seconds"
-            )
-            logger.info("")
-
-            // The StreamingAsrManager will handle conversion automatically
-            logger.info("StreamingAsrManager will automatically convert to 16kHz mono\n")
-
-        } catch {
-            logger.error("Failed to load audio file info: \(error)")
-        }
-    }
-
     /// Test batch transcription using AsrManager directly
     private static func testBatchTranscription(audioFile: String, showMetadata: Bool) async {
-        logger.info("Testing Batch Transcription")
-        logger.info("------------------------------")
-
         do {
             // Initialize ASR models
             let models = try await AsrModels.downloadAndLoad()
@@ -151,25 +114,25 @@ enum TranscribeCommand {
             try audioFileHandle.read(into: buffer)
 
             // Convert audio to the format expected by ASR (16kHz mono Float array)
-            let samples = try await AudioProcessor.loadAudioFile(path: audioFile)
-
+            let samples = try AudioConverter().resampleAudioFile(path: audioFile)
             let duration = Double(audioFileHandle.length) / format.sampleRate
             logger.info("Processing \(String(format: "%.2f", duration))s of audio (\(samples.count) samples)\n")
 
             // Process with ASR Manager
+            logger.info("Transcribing file: \(audioFileURL) ...")
             let startTime = Date()
-            let result = try await asrManager.transcribe(samples, source: .system)
+            let result = try await asrManager.transcribe(audioFileURL)
             let processingTime = Date().timeIntervalSince(startTime)
 
             // Print results
-            logger.info("\n" + String(repeating: "=", count: 50))
+            logger.info("" + String(repeating: "=", count: 50))
             logger.info("BATCH TRANSCRIPTION RESULTS")
             logger.info(String(repeating: "=", count: 50))
-            logger.info("\nFinal transcription:")
+            logger.info("Final transcription:")
             logger.info(result.text)
 
             if showMetadata {
-                logger.info("\nMetadata:")
+                logger.info("Metadata:")
                 logger.info("  Confidence: \(String(format: "%.3f", result.confidence))")
                 logger.info("  Duration: \(String(format: "%.3f", result.duration))s")
                 if let tokenTimings = result.tokenTimings, !tokenTimings.isEmpty {
@@ -177,7 +140,7 @@ enum TranscribeCommand {
                     let endTime = tokenTimings.last?.endTime ?? result.duration
                     logger.info("  Start time: \(String(format: "%.3f", startTime))s")
                     logger.info("  End time: \(String(format: "%.3f", endTime))s")
-                    logger.info("\nToken Timings:")
+                    logger.info("Token Timings:")
                     for (index, timing) in tokenTimings.enumerated() {
                         logger.info(
                             "    [\(index)] '\(timing.token)' (id: \(timing.tokenId), start: \(String(format: "%.3f", timing.startTime))s, end: \(String(format: "%.3f", timing.endTime))s, conf: \(String(format: "%.3f", timing.confidence)))"
@@ -192,7 +155,7 @@ enum TranscribeCommand {
 
             let rtfx = duration / processingTime
 
-            logger.info("\nPerformance:")
+            logger.info("Performance:")
             logger.info("  Audio duration: \(String(format: "%.2f", duration))s")
             logger.info("  Processing time: \(String(format: "%.2f", processingTime))s")
             logger.info("  RTFx: \(String(format: "%.2f", rtfx))x")

@@ -10,24 +10,9 @@ extension AsrManager {
         guard isAvailable else { throw ASRError.notInitialized }
         guard audioSamples.count >= 16_000 else { throw ASRError.invalidAudioData }
 
-        if config.enableDebug {
-            logger.debug("transcribeWithState: processing \(audioSamples.count) samples")
-            // Log decoder state values before processing
-            let hiddenBefore = (
-                decoderState.hiddenState[0].intValue, decoderState.hiddenState[1].intValue
-            )
-            let cellBefore = (
-                decoderState.cellState[0].intValue, decoderState.cellState[1].intValue
-            )
-            logger.debug(
-                "Decoder state before: hidden[\(hiddenBefore.0),\(hiddenBefore.1)], cell[\(cellBefore.0),\(cellBefore.1)]"
-            )
-        }
-
         let startTime = Date()
 
         // Route to appropriate processing method based on audio length
-
         if audioSamples.count <= 240_000 {
             let originalLength = audioSamples.count
             let paddedAudio: [Float] = padAudioIfNeeded(audioSamples, targetLength: 240_000)
@@ -35,7 +20,6 @@ extension AsrManager {
                 paddedAudio,
                 originalLength: originalLength,
                 actualAudioFrames: nil,  // Will be calculated from originalLength
-                enableDebug: config.enableDebug,
                 decoderState: &decoderState
             )
 
@@ -48,24 +32,11 @@ extension AsrManager {
                 audioSamples: audioSamples,
                 processingTime: Date().timeIntervalSince(startTime)
             )
-
-            if config.enableDebug {
-                // Log decoder state values after processing
-                let hiddenAfter = (
-                    decoderState.hiddenState[0].intValue, decoderState.hiddenState[1].intValue
-                )
-                let cellAfter = (decoderState.cellState[0].intValue, decoderState.cellState[1].intValue)
-                logger.debug(
-                    "Decoder state after: hidden[\(hiddenAfter.0),\(hiddenAfter.1)], cell[\(cellAfter.0),\(cellAfter.1)]"
-                )
-                logger.debug("Transcription result: '\(result.text)'")
-            }
-
             return result
         }
 
         // ChunkProcessor now uses the passed-in decoder state for continuity
-        let processor = ChunkProcessor(audioSamples: audioSamples, enableDebug: config.enableDebug)
+        let processor = ChunkProcessor(audioSamples: audioSamples)
         return try await processor.process(using: self, decoderState: &decoderState, startTime: startTime)
     }
 
@@ -73,43 +44,31 @@ extension AsrManager {
         _ paddedAudio: [Float],
         originalLength: Int? = nil,
         actualAudioFrames: Int? = nil,
-        enableDebug: Bool = false,
         decoderState: inout TdtDecoderState,
         contextFrameAdjustment: Int = 0,
         isLastChunk: Bool = false,
         globalFrameOffset: Int = 0
     ) async throws -> (hypothesis: TdtHypothesis, encoderSequenceLength: Int) {
 
-        let melspectrogramInput = try await prepareMelSpectrogramInput(
+        let melEncoderInput = try await prepareMelEncoderInput(
             paddedAudio, actualLength: originalLength)
 
-        guard
-            let melspectrogramOutput = try melspectrogramModel?.prediction(
-                from: melspectrogramInput,
-                options: predictionOptions
-            )
-        else {
-            throw ASRError.processingFailed("Mel-spectrogram model failed")
+        guard let melEncoderModel = melEncoderModel else {
+            throw ASRError.processingFailed("Mel-encoder model failed")
         }
 
-        let encoderInput = try prepareEncoderInput(melspectrogramOutput)
-
-        guard
-            let encoderOutput = try encoderModel?.prediction(
-                from: encoderInput,
-                options: predictionOptions
-            )
-        else {
-            throw ASRError.processingFailed("Encoder model failed")
-        }
+        // Bridge async Core ML prediction while supporting legacy synchronous toolchains.
+        let melEncoderOutput = try await melEncoderModel.compatPrediction(
+            from: melEncoderInput,
+            options: predictionOptions
+        )
 
         let rawEncoderOutput = try extractFeatureValue(
-            from: encoderOutput, key: "encoder_output", errorMessage: "Invalid encoder output")
+            from: melEncoderOutput, key: "encoder", errorMessage: "Invalid encoder output")
         let encoderLength = try extractFeatureValue(
-            from: encoderOutput, key: "encoder_output_length",
+            from: melEncoderOutput, key: "encoder_length",
             errorMessage: "Invalid encoder output length")
 
-        let encoderHiddenStates = rawEncoderOutput
         let encoderSequenceLength = encoderLength[0].intValue
 
         // Calculate actual audio frames if not provided using shared constants
@@ -117,7 +76,7 @@ extension AsrManager {
             actualAudioFrames ?? ASRConstants.calculateEncoderFrames(from: originalLength ?? paddedAudio.count)
 
         let hypothesis = try await tdtDecodeWithTimings(
-            encoderOutput: encoderHiddenStates,
+            encoderOutput: rawEncoderOutput,
             encoderSequenceLength: encoderSequenceLength,
             actualAudioFrames: actualFrames,
             originalAudioSamples: paddedAudio,
@@ -135,8 +94,7 @@ extension AsrManager {
     internal func transcribeStreamingChunk(
         _ chunkSamples: [Float],
         source: AudioSource,
-        previousTokens: [Int] = [],
-        enableDebug: Bool
+        previousTokens: [Int] = []
     ) async throws -> (tokens: [Int], timestamps: [Int], confidences: [Float], encoderSequenceLength: Int) {
         // Select and copy decoder state for the source
         var state = (source == .microphone) ? microphoneDecoderState : systemDecoderState
@@ -147,7 +105,6 @@ extension AsrManager {
             padded,
             originalLength: originalLength,
             actualAudioFrames: nil,  // Will be calculated from originalLength
-            enableDebug: enableDebug,
             decoderState: &state,
             contextFrameAdjustment: 0  // Non-streaming chunks don't use adaptive context
         )
@@ -168,10 +125,6 @@ extension AsrManager {
             let adjustedConfidences =
                 removedCount > 0
                 ? Array(hypothesis.tokenConfidences.dropFirst(removedCount)) : hypothesis.tokenConfidences
-
-            if enableDebug && removedCount > 0 {
-                logger.debug("Streaming chunk: removed \(removedCount) duplicate tokens")
-            }
 
             return (deduped, adjustedTimestamps, adjustedConfidences, encLen)
         }
@@ -264,44 +217,59 @@ extension AsrManager {
 
         var timings: [TokenTiming] = []
 
-        for i in 0..<tokenIds.count {
-            let tokenId = tokenIds[i]
-            let frameIndex = timestamps[i]
+        // Create combined data for sorting
+        let combinedData = zip(
+            zip(zip(tokenIds, timestamps), confidences),
+            tokenDurations.isEmpty ? Array(repeating: 0, count: tokenIds.count) : tokenDurations
+        ).map {
+            (tokenId: $0.0.0.0, timestamp: $0.0.0.1, confidence: $0.0.1, duration: $0.1)
+        }
 
-            // Convert encoder frame index to time (approximate: 80ms per frame)
+        // Sort by timestamp to ensure chronological order
+        let sortedData = combinedData.sorted { $0.timestamp < $1.timestamp }
+
+        for i in 0..<sortedData.count {
+            let data = sortedData[i]
+            let tokenId = data.tokenId
+            let frameIndex = data.timestamp
+
+            // Convert encoder frame index to time (80ms per frame)
             let startTime = TimeInterval(frameIndex) * 0.08
 
             // Calculate end time using actual token duration if available
             let endTime: TimeInterval
-            if !tokenDurations.isEmpty && tokenDurations.count == tokenIds.count {
+            if !tokenDurations.isEmpty && data.duration > 0 {
                 // Use actual token duration (convert frames to time: duration * 0.08)
-                let durationInSeconds = TimeInterval(tokenDurations[i]) * 0.08
+                let durationInSeconds = TimeInterval(data.duration) * 0.08
                 endTime = startTime + max(durationInSeconds, 0.08)  // Minimum 80ms duration
-            } else if i < tokenIds.count - 1 {
+            } else if i < sortedData.count - 1 {
                 // Fallback: Use next token's start time as this token's end time
-                endTime = TimeInterval(timestamps[i + 1]) * 0.08
+                let nextStartTime = TimeInterval(sortedData[i + 1].timestamp) * 0.08
+                endTime = max(nextStartTime, startTime + 0.08)  // Ensure end > start
             } else {
                 // For the last token, use a default duration
                 endTime = startTime + 0.08
             }
 
+            // Validate that end time is after start time
+            let validatedEndTime = max(endTime, startTime + 0.001)  // Minimum 1ms gap
+
             // Get token text from vocabulary if available
             let tokenText = vocabulary[tokenId] ?? "token_\(tokenId)"
 
             // Use actual confidence score from TDT decoder
-            let tokenConfidence = confidences[i]
+            let tokenConfidence = data.confidence
 
             let timing = TokenTiming(
                 token: tokenText,
                 tokenId: tokenId,
                 startTime: startTime,
-                endTime: endTime,
+                endTime: validatedEndTime,
                 confidence: tokenConfidence
             )
 
             timings.append(timing)
         }
-
         return timings
     }
 
@@ -373,9 +341,7 @@ extension AsrManager {
             let currPrefix = Array(workingCurrent.prefix(overlapLength))
 
             if prevSuffix == currPrefix {
-                if config.enableDebug {
-                    logger.debug("Found exact suffix-prefix overlap of length \(overlapLength): \(prevSuffix)")
-                }
+                logger.debug("Found exact suffix-prefix overlap of length \(overlapLength): \(prevSuffix)")
                 let finalRemoved = removedCount + overlapLength
                 return (Array(workingCurrent.dropFirst(overlapLength)), finalRemoved)
             }
@@ -398,11 +364,9 @@ extension AsrManager {
                 for currentStart in 0..<searchLimit {
                     let currSub = Array(workingCurrent[currentStart..<(currentStart + overlapLength)])
                     if prevSub == currSub {
-                        if config.enableDebug {
-                            logger.debug(
-                                "Found duplicate sequence length=\(overlapLength) at currStart=\(currentStart): \(prevSub) (boundarySearch=\(boundarySearchFrames))"
-                            )
-                        }
+                        logger.debug(
+                            "Found duplicate sequence length=\(overlapLength) at currStart=\(currentStart): \(prevSub) (boundarySearch=\(boundarySearchFrames))"
+                        )
                         let finalRemoved = removedCount + currentStart + overlapLength
                         return (Array(workingCurrent.dropFirst(currentStart + overlapLength)), finalRemoved)
                     }

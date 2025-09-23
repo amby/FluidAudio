@@ -96,18 +96,6 @@ public class DownloadUtils {
         public static let `default` = DownloadConfig()
     }
 
-    /// Model repositories on HuggingFace
-    public enum Repo: String, CaseIterable {
-        case vad = "FluidInference/silero-vad-coreml"
-        case parakeet = "FluidInference/parakeet-tdt-0.6b-v3-coreml"
-        case diarizer = "FluidInference/speaker-diarization-coreml"
-
-        var folderName: String {
-            rawValue.split(separator: "/").last?.description ?? rawValue
-        }
-
-    }
-
     public static func loadModels(
         _ repo: Repo,
         modelNames: [String],
@@ -161,6 +149,7 @@ public class DownloadUtils {
         // Configure CoreML
         let config = MLModelConfiguration()
         config.computeUnits = computeUnits
+        config.allowLowPrecisionAccumulationOnGPU = true
 
         // Load each model
         var models: [String: MLModel] = [:]
@@ -203,8 +192,20 @@ public class DownloadUtils {
                         ])
                 }
 
-                models[name] = try MLModel(contentsOf: modelPath, configuration: config)
+                // Measure Core ML model initialization time (aka local compilation/open)
+                let start = Date()
+                let model = try MLModel(contentsOf: modelPath, configuration: config)
+                let elapsed = Date().timeIntervalSince(start)
+
+                models[name] = model
+
+                // Always log model load; additionally report timing for ASR (parakeet) models
                 logger.info("Loaded model: \(name)")
+                if repo == .parakeet {
+                    let ms = elapsed * 1000
+                    let formatted = String(format: "%.2f", ms)
+                    logger.info("Compiled ASR model \(name) in \(formatted) ms")
+                }
             } catch {
                 logger.error("Failed to load model \(name): \(error)")
 
@@ -223,19 +224,6 @@ public class DownloadUtils {
         return models
     }
 
-    /// Get required model names from the appropriate manager
-    @available(macOS 13.0, iOS 16.0, *)
-    private static func getRequiredModelNames(for repo: Repo) -> Set<String> {
-        switch repo {
-        case .vad:
-            return VadManager.requiredModelNames
-        case .parakeet:
-            return AsrModels.requiredModelNames
-        case .diarizer:
-            return DiarizerModels.requiredModelNames
-        }
-    }
-
     /// Download a HuggingFace repository
     private static func downloadRepo(_ repo: Repo, to directory: URL) async throws {
         logger.info("📥 Downloading \(repo.folderName) from HuggingFace...")
@@ -245,7 +233,7 @@ public class DownloadUtils {
         try FileManager.default.createDirectory(at: repoPath, withIntermediateDirectories: true)
 
         // Get the required model names for this repo from the appropriate manager
-        let requiredModels = getRequiredModelNames(for: repo)
+        let requiredModels = ModelNames.getRequiredModelNames(for: repo)
 
         // Download all repository contents
         let files = try await listRepoFiles(repo)

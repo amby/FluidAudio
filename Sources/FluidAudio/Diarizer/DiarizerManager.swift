@@ -17,7 +17,7 @@ public final class DiarizerManager {
     public let segmentationProcessor = SegmentationProcessor()
     public var embeddingExtractor: EmbeddingExtractor?
     private let audioValidation = AudioValidation()
-    private let memoryOptimizer = ANEMemoryOptimizer.shared
+    private let memoryOptimizer = ANEMemoryOptimizer()
 
     // Speaker manager for consistent speaker tracking
     public let speakerManager: SpeakerManager
@@ -244,8 +244,6 @@ public final class DiarizerManager {
         guard let embeddingExtractor = self.embeddingExtractor else {
             throw DiarizerError.notInitialized
         }
-
-        logger.debug("Using EmbeddingExtractor for embedding extraction")
 
         var masks: [[Float]] = []
         let numSpeakers = slidingFeature.data[0][0].count

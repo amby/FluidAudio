@@ -1,5 +1,17 @@
 import Foundation
 
+/// Model repositories on HuggingFace
+public enum Repo: String, CaseIterable {
+    case vad = "FluidInference/silero-vad-coreml"
+    case parakeet = "FluidInference/parakeet-tdt-0.6b-v3-coreml"
+    case diarizer = "FluidInference/speaker-diarization-coreml"
+
+    var folderName: String {
+        rawValue.split(separator: "/").last?.description ?? rawValue
+    }
+
+}
+
 /// Centralized model names for all FluidAudio components
 public enum ModelNames {
 
@@ -19,20 +31,17 @@ public enum ModelNames {
 
     /// ASR model names
     public enum ASR {
-        public static let melspectrogram = "Melspectrogram_15s"
-        public static let encoder = "ParakeetEncoder_15s"
-        public static let decoder = "ParakeetDecoder"
-        public static let joint = "RNNTJoint"
+        public static let melEncoder = "MelEncoder"
+        public static let decoder = "Decoder"
+        public static let joint = "JointDecision"
         public static let vocabulary = "parakeet_v3_vocab.json"
 
-        public static let melspectrogramFile = melspectrogram + ".mlmodelc"
-        public static let encoderFile = encoder + ".mlmodelc"
+        public static let melEncoderFile = melEncoder + ".mlmodelc"
         public static let decoderFile = decoder + ".mlmodelc"
         public static let jointFile = joint + ".mlmodelc"
 
         public static let requiredModels: Set<String> = [
-            melspectrogramFile,
-            encoderFile,
+            melEncoderFile,
             decoderFile,
             jointFile,
         ]
@@ -40,18 +49,25 @@ public enum ModelNames {
 
     /// VAD model names
     public enum VAD {
-        public static let stft = "silero_stft"
-        public static let encoder = "silero_encoder"
-        public static let rnnDecoder = "silero_rnn_decoder"
+        public static let sileroVad = "silero-vad-unified-256ms-v6.0.0"
 
-        public static let stftFile = stft + ".mlmodelc"
-        public static let encoderFile = encoder + ".mlmodelc"
-        public static let rnnDecoderFile = rnnDecoder + ".mlmodelc"
+        public static let sileroVadFile = sileroVad + ".mlmodelc"
 
         public static let requiredModels: Set<String> = [
-            stftFile,
-            encoderFile,
-            rnnDecoderFile,
+            sileroVadFile
         ]
     }
+
+    @available(macOS 13.0, iOS 16.0, *)
+    static func getRequiredModelNames(for repo: Repo) -> Set<String> {
+        switch repo {
+        case .vad:
+            return ModelNames.VAD.requiredModels
+        case .parakeet:
+            return ModelNames.ASR.requiredModels
+        case .diarizer:
+            return ModelNames.Diarizer.requiredModels
+        }
+    }
+
 }
