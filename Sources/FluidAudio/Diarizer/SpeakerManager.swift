@@ -115,7 +115,7 @@ public class SpeakerManager {
         }
     }
 
-    func findClosestSpeaker(to embedding: [Float]) -> (speakerId: String?, distance: Float) {
+    public func findClosestSpeaker(to embedding: [Float]) -> (speakerId: String?, distance: Float) {
         var minDistance: Float = Float.infinity
         var closestSpeakerId: String?
 
