@@ -275,6 +275,10 @@ public final class DiarizerManager {
         var embeddingInvalidCount = 0
         var clusteringProcessedCount = 0
 
+        var validEmbeddings: [[Float]] = []
+        var validSpeakerIndices: [Int] = []
+        var durations: [Float] = []
+        var confidences: [Float] = []
         for (speakerIndex, activity) in speakerActivities.enumerated() {
             if activity > self.config.minActiveFramesCount {
                 let embedding = embeddings[speakerIndex]
@@ -285,15 +289,21 @@ public final class DiarizerManager {
 
                     let quality = calculateEmbeddingQuality(embedding) * (activity / Float(numFrames))
 
-                    if let speaker = speakerManager.assignSpeaker(
-                        embedding,
-                        speechDuration: duration,
-                        confidence: quality
-                    ) {
-                        speakerIds.append(speaker.id)
-                    } else {
-                        speakerIds.append("")
-                    }
+                    validEmbeddings.append(embedding)
+                    durations.append(duration)
+                    confidences.append(quality)
+                    validSpeakerIndices.append(speakerIndex)
+                    speakerIds.append("")
+                    
+//                    if let speaker = speakerManager.assignSpeaker(
+//                        embedding,
+//                        speechDuration: duration,
+//                        confidence: quality
+//                    ) {
+//                        speakerIds.append(speaker.id)
+//                    } else {
+//                        speakerIds.append("")
+//                    }
                 } else {
                     embeddingInvalidCount += 1
                     speakerIds.append("")
@@ -303,7 +313,18 @@ public final class DiarizerManager {
                 speakerIds.append("")
             }
         }
-
+        
+        let speakers = speakerManager.assignSpeakers(embeddings: validEmbeddings,
+                                                     durations: durations,
+                                                     confidences: confidences)
+        for (i, speaker) in speakers.enumerated() {
+            guard let speaker else {
+                continue
+            }
+            let speakerIndex = validSpeakerIndices[i]
+            speakerIds[speakerIndex] = speaker.id
+        }
+        
         let clusteringTime = Date().timeIntervalSince(clusteringStartTime)
 
         let segments = createTimedSegments(

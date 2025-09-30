@@ -3,9 +3,9 @@ import Foundation
 import OSLog
 
 // Computes cosine distance between two embeddings. Returns infinity if embeddings are invalid.
-public func cosineDistance(a: [Float], b: [Float]) -> Float {
+public func cosineDist(_ a: [Float], _ b: [Float]) -> Float {
     guard a.count == b.count else {
-        return Float.infinity
+        return .infinity
     }
     
     let dimension = a.count
@@ -22,7 +22,7 @@ public func cosineDistance(a: [Float], b: [Float]) -> Float {
     magnitudeB = sqrt(magnitudeB)
     
     guard magnitudeA > 0 && magnitudeB > 0 else {
-        return Float.infinity
+        return .infinity
     }
     
     // Cosine similarity = dot product / (magnitude1 * magnitude2)
@@ -33,7 +33,7 @@ public func cosineDistance(a: [Float], b: [Float]) -> Float {
 }
 
 // Calculates element-wise sum of two given embeddings.
-func sumEmbeddings(a: [Float], b: [Float]) -> [Float] {
+func sumEmbeddings(_ a: [Float], _ b: [Float]) -> [Float] {
     precondition(a.count == b.count, "Different embedding dimensions")
     let count = a.count
     let c = [Float](unsafeUninitializedCapacity: count) {
@@ -50,7 +50,7 @@ func sumEmbeddings(a: [Float], b: [Float]) -> [Float] {
 }
 
 // Divides given vector by specified scalar.
-func divEmbedding(a: [Float], b: Float) -> [Float] {
+func divEmbedding(_ a: [Float], _ b: Float) -> [Float] {
     let count = a.count
     let c = [Float](unsafeUninitializedCapacity: count) {
         buffer, initializedCount in
@@ -74,8 +74,17 @@ public struct Cluster {
     let centroid: [Float]
 }
 
-// Represents minimal distances between embeddings/clusters.
-public struct MinClusterDistances {
+// Type of distance between embeddings/clusters.
+public enum DistanceType {
+    case min // Minimal distance.
+    case max // Maximum distance.
+}
+
+// Represents distances between embeddings/clusters.
+public struct ClusterDistances {
+    // Type of distances.
+    let type: DistanceType
+    
     // Minimal distances between embeddings/clusters. Index of the first embedding is the same as
     // the index of corresponding distance in the arrays.
     var distances: [Float]
@@ -84,10 +93,24 @@ public struct MinClusterDistances {
     var otherIndices: [Int]
     
     // Updates current distance for specified pair of indices if given distance is less than current.
-    mutating func tryUpdating(index: Int, otherIndex: Int, distance: Float) {
-        if distance < distances[index] {
-            distances[index] = distance
-            otherIndices[index] = otherIndex
+    // Returns true if updating took place, false otherwise.
+    @discardableResult
+    mutating func tryUpdating(index: Int, otherIndex: Int, distance: Float) -> Bool {
+        switch type {
+        case .min:
+            if distance < distances[index] {
+                distances[index] = distance
+                otherIndices[index] = otherIndex
+                return true
+            }
+            return false
+        case .max:
+            if distance > distances[index] {
+                distances[index] = distance
+                otherIndices[index] = otherIndex
+                return true
+            }
+            return false
         }
     }
 }
@@ -97,7 +120,7 @@ public struct MinClusterDistances {
 // audio embeddings).
 public func clusterize(maxDistance: Float, // Maximum distance threshold.
                        embeddings: [[Float]],
-                       minClusterDistances: MinClusterDistances) -> (MinClusterDistances, [Cluster]) {
+                       minClusterDistances: ClusterDistances) -> (ClusterDistances, [Cluster]) {
     guard !embeddings.isEmpty else {
         return (minClusterDistances, [])
     }
@@ -106,8 +129,8 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
     var centroids = embeddings
     var clusters: [[Int]] = (0..<embeddings.count).map { [$0] }
     
-    let resultMinClusterDistances = updateMinClusterDistances(embeddings: embeddings,
-                                                              minClusterDistances: minClusterDistances)
+    let resultMinClusterDistances = updateClusterDistances(embeddings: embeddings,
+                                                              clusterDistances: minClusterDistances)
     
     var minClusterDistances = resultMinClusterDistances
     while true {
@@ -125,14 +148,14 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
         clusters[minIndex].append(contentsOf: clusters[otherIndex])
         clusters[otherIndex] = []
         
-        sums[minIndex] = sumEmbeddings(a: sums[minIndex], b: sums[otherIndex])
-        centroids[minIndex] = divEmbedding(a: sums[minIndex], b: Float(clusters[minIndex].count))
+        sums[minIndex] = sumEmbeddings(sums[minIndex], sums[otherIndex])
+        centroids[minIndex] = divEmbedding(sums[minIndex], Float(clusters[minIndex].count))
         
 //        minClusterDistances.distances[otherIndex] = Float.nan
 //        minClusterDistances.otherIndices[otherIndex] = -1 // Optional.
         
-        minClusterDistances = updateMinClusterDistances(embeddings: centroids,
-                                                        minClusterDistances: minClusterDistances,
+        minClusterDistances = updateClusterDistances(embeddings: centroids,
+                                                        clusterDistances: minClusterDistances,
                                                         updatedEmbeddingIndices: [minIndex],
                                                         removedEmbeddingIndices: [otherIndex])
     }
@@ -146,33 +169,35 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
     )
 }
 
-// Updates minimal cluster distances for given embeddings.
-func updateMinClusterDistances(embeddings: [[Float]],
-                               minClusterDistances: MinClusterDistances,
-                               updatedEmbeddingIndices: [Int] = [],
-                               removedEmbeddingIndices: [Int] = []) -> MinClusterDistances {
-    let extraCount = embeddings.count - minClusterDistances.distances.count
-    var minClusterDistances = extraCount > 0 ?
-        MinClusterDistances(
-            distances: minClusterDistances.distances + .init(repeating: Float.infinity, count: extraCount),
-            otherIndices: minClusterDistances.otherIndices + .init(repeating: -1, count: extraCount)
-        ) : minClusterDistances
+// Updates cluster distances for given embeddings.
+func updateClusterDistances(embeddings: [[Float]],
+                            clusterDistances: ClusterDistances,
+                            updatedEmbeddingIndices: [Int] = [],
+                            removedEmbeddingIndices: [Int] = []) -> ClusterDistances {
+    let defaultDistance: Float = clusterDistances.type == .min ? .infinity : -.infinity
+    let extraCount = embeddings.count - clusterDistances.distances.count
+    var clusterDistances = extraCount > 0 ?
+        ClusterDistances(
+            type: clusterDistances.type,
+            distances: clusterDistances.distances + .init(repeating: defaultDistance, count: extraCount),
+            otherIndices: clusterDistances.otherIndices + .init(repeating: -1, count: extraCount)
+        ) : clusterDistances
     
     // Mark distances for removed embeddings as noop.
     for i in removedEmbeddingIndices {
-        minClusterDistances.distances[i] = .nan
-        minClusterDistances.otherIndices[i] = -1 // Optional.
+        clusterDistances.distances[i] = .nan
+        clusterDistances.otherIndices[i] = -1 // Optional.
     }
     
     // Compute distances for new embeddings if any.
     for i in embeddings.count-extraCount..<embeddings.count {
         for k in 0..<i {
-            if minClusterDistances.distances[k].isNaN {
+            if clusterDistances.distances[k].isNaN {
                 continue
             }
-            let distance = cosineDistance(a: embeddings[i], b: embeddings[k])
-            minClusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
-            minClusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance)
+            let distance = cosineDist(embeddings[i], embeddings[k])
+            clusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
+            clusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance)
         }
     }
 
@@ -180,12 +205,12 @@ func updateMinClusterDistances(embeddings: [[Float]],
 
     // Reset distances for all removed embeddings.
     for i in 0..<embeddings.count {
-        if minClusterDistances.distances[i].isNaN {
+        if clusterDistances.distances[i].isNaN {
             continue
         }
-        if removedEmbeddingIndices.contains(minClusterDistances.otherIndices[i]) {
-            minClusterDistances.distances[i] = .infinity
-            minClusterDistances.otherIndices[i] = -1
+        if removedEmbeddingIndices.contains(clusterDistances.otherIndices[i]) {
+            clusterDistances.distances[i] = defaultDistance
+            clusterDistances.otherIndices[i] = -1
             wrongDistanceIndices.append(i)
         }
     }
@@ -193,19 +218,18 @@ func updateMinClusterDistances(embeddings: [[Float]],
     // Recompute min distances for updated embeddings.
     for i in updatedEmbeddingIndices {
         for k in 0..<embeddings.count {
-            if i == k || minClusterDistances.distances[k].isNaN {
+            if i == k || clusterDistances.distances[k].isNaN {
                 continue
             }
-            let distance = cosineDistance(a: embeddings[i], b: embeddings[k])
-            if distance < minClusterDistances.distances[k] {
-                minClusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
-                minClusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance)
-            } else if minClusterDistances.otherIndices[k] == i {
+            let distance = cosineDist(embeddings[i], embeddings[k])
+            if clusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance) {
+                clusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
+            } else if clusterDistances.otherIndices[k] == i {
                 // Previous minimal distance was computed with for the previous i-th embedding.
                 // Should be recomputed since i-th embedding was changed.
                 wrongDistanceIndices.append(k)
-                minClusterDistances.distances[k] = .infinity
-                minClusterDistances.otherIndices[k] = -1
+                clusterDistances.distances[k] = defaultDistance
+                clusterDistances.otherIndices[k] = -1
             }
         }
     }
@@ -213,14 +237,64 @@ func updateMinClusterDistances(embeddings: [[Float]],
     // Recomputed distances which were invalidated by updating of embeddings.
     for i in wrongDistanceIndices {
         for k in 0..<embeddings.count {
-            if i == k || minClusterDistances.distances[k].isNaN {
+            if i == k || clusterDistances.distances[k].isNaN {
                 continue
             }
-            let distance = cosineDistance(a: embeddings[i], b: embeddings[k])
-            minClusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
+            let distance = cosineDist(embeddings[i], embeddings[k])
+            clusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
 //            minClusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance)
         }
     }
     
-    return minClusterDistances
+    return clusterDistances
+}
+
+// Computes distance from given embeddings to specified clusters.
+func computeDistancesToClusters(embeddings: [[Float]],
+                                clusters: [Cluster],
+                                distancesToClusters: ClusterDistances,
+                                removedEmbeddingIndex: Int? = nil,
+                                removedClusterIndex: Int? = nil)  -> ClusterDistances {
+    guard !clusters.isEmpty else {
+        return ClusterDistances(type: distancesToClusters.type, distances: [], otherIndices: [])
+    }
+    
+    if let removedClusterIndex {
+        precondition(clusters[removedClusterIndex].centroid.isEmpty,
+                     "Found filtered out cluster with non-empty centroid")
+    }
+
+    let defaultDistance: Float = distancesToClusters.type == .min ? .infinity : -.infinity
+    let extraCount = embeddings.count - distancesToClusters.distances.count
+    var distancesToClusters = extraCount > 0 ?
+        ClusterDistances(
+            type: distancesToClusters.type,
+            distances: distancesToClusters.distances + .init(repeating: defaultDistance, count: extraCount),
+            otherIndices: distancesToClusters.otherIndices + .init(repeating: -1, count: extraCount)
+        ) : distancesToClusters
+
+    if let removedEmbeddingIndex = removedEmbeddingIndex {
+        distancesToClusters.distances[removedEmbeddingIndex] = Float.nan
+    }
+    
+    for i in 0..<embeddings.count {
+        if distancesToClusters.distances[i].isNaN {
+            continue
+        }
+        if let removedClusterIndex, distancesToClusters.otherIndices[i] == removedClusterIndex {
+            distancesToClusters.distances[i] = defaultDistance
+            distancesToClusters.otherIndices[i] = -1
+        }
+        let embedding = embeddings[i]
+        for (k, cluster) in clusters.enumerated() {
+            if cluster.centroid.isEmpty {
+                // Filtered out cluster.
+                continue
+            }
+            let distance = cosineDist(embedding, cluster.centroid)
+            distancesToClusters.tryUpdating(index: i, otherIndex: k, distance: distance)
+        }
+    }
+    
+    return distancesToClusters
 }

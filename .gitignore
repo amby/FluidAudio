@@ -96,6 +96,7 @@ FluidAudioDatasets/
 
 *.wav
 *.mp3
+*.m4a
 Resources/
 scripts/
 Documentation/parakeet-tdt/

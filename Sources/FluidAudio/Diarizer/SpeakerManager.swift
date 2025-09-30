@@ -1,3 +1,4 @@
+import Accelerate
 import Foundation
 import OSLog
 
@@ -12,6 +13,10 @@ public class SpeakerManager {
 
     // Speaker database: ID -> Speaker
     internal var speakerDatabase: [String: Speaker] = [:]
+    // All currently clusterized embeddings.
+    internal var embeddings: [[Float]] = []
+    // Computed minimal cluster distances.
+    internal var minClusterDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
     private var nextSpeakerId = 1
     internal let queue = DispatchQueue(label: "speaker.manager.queue", attributes: .concurrent)
 
@@ -22,17 +27,20 @@ public class SpeakerManager {
     public var embeddingThreshold: Float  // Max distance for updating embeddings (default: 0.45)
     public var minSpeechDuration: Float  // Min duration to create speaker (default: 1.0)
     public var minEmbeddingUpdateDuration: Float  // Min duration to update embeddings (default: 2.0)
+    private var maxEmbeddingsPerSpeaker: Int = 50 // Maximum number of embeddings to store per speaker.
 
     public init(
         speakerThreshold: Float = 0.65,
         embeddingThreshold: Float = 0.45,
         minSpeechDuration: Float = 1.0,
-        minEmbeddingUpdateDuration: Float = 2.0
+        minEmbeddingUpdateDuration: Float = 2.0,
+        maxEmbeddingsPerSpeaker: Int = 50
     ) {
         self.speakerThreshold = speakerThreshold
         self.embeddingThreshold = embeddingThreshold
         self.minSpeechDuration = minSpeechDuration
         self.minEmbeddingUpdateDuration = minEmbeddingUpdateDuration
+        self.maxEmbeddingsPerSpeaker = maxEmbeddingsPerSpeaker
     }
 
     public func initializeKnownSpeakers(_ speakers: [Speaker]) {
@@ -47,6 +55,7 @@ public class SpeakerManager {
                 }
 
                 speakerDatabase[speaker.id] = speaker
+                embeddings.append(speaker.currentEmbedding)
 
                 // Try to extract numeric ID if it's a pure number
                 if let numericId = Int(speaker.id) {
@@ -64,6 +73,178 @@ public class SpeakerManager {
             logger.info(
                 "Initialized with \(self.speakerDatabase.count) known speakers, next ID will be: \(self.nextSpeakerId)"
             )
+        }
+    }
+    
+    // Assigns speakers to given embeddings.
+    public func assignSpeakers(embeddings newEmbeddings: [[Float]],
+                               durations: [Float],
+                               confidences: [Float]) -> [Speaker?] {
+        precondition(newEmbeddings.count == durations.count && durations.count == confidences.count,
+                     "Mismatched number of embeddings (\(newEmbeddings.count)), " +
+                     "durations (\(durations.count)) and confidences (\(confidences.count))")
+        
+        guard !newEmbeddings.isEmpty else {
+            return []
+        }
+        
+        var newEmbeddingsToSpeakersIDs: [Int: String] = [:]
+        return queue.sync(flags: .barrier) {
+            var validEmbeddingIndices: [Int] = []
+            var recheckEmbeddingIndices: [Int] = []
+            for (i, embedding) in newEmbeddings.enumerated() {
+                guard !embedding.isEmpty, embedding.count == Self.embeddingSize else {
+                    continue
+                }
+                guard durations[i] >= minSpeechDuration else {
+                    recheckEmbeddingIndices.append(i)
+                    continue
+                }
+                embeddings.append(embedding)
+                validEmbeddingIndices.append(i)
+            }
+            
+            guard !validEmbeddingIndices.isEmpty || !recheckEmbeddingIndices.isEmpty else {
+                return .init(repeating: nil, count: newEmbeddings.count)
+            }
+            
+            if !validEmbeddingIndices.isEmpty {
+                // Perform clusterization of all embedding collected so far.
+                let (minClusterDistances, clusters) = clusterize(maxDistance: speakerThreshold,
+                                                                 embeddings: embeddings,
+                                                                 minClusterDistances: minClusterDistances)
+                
+                self.minClusterDistances = minClusterDistances
+                
+                let validNewEmbeddingsStartIndex = embeddings.count - validEmbeddingIndices.count
+                let validNewEmbeddingsToClusters: [Int: Int] = clusters.enumerated().reduce(into: [:]) {
+                    for embeddingIndex in $1.element.embeddingIndices {
+                        if embeddingIndex >= validNewEmbeddingsStartIndex {
+                            $0[embeddingIndex - validNewEmbeddingsStartIndex] = $1.offset
+                        }
+                    }
+                }
+                
+                // Associate existing speakers to the new clusters.
+                let speakers = Array(speakerDatabase.values)
+                let speakerEmbeddings: [[Float]] = speakers.reduce(into: []) {
+                    $0.append($1.currentEmbedding)
+                }
+                
+                var minDistanceToClusters = computeDistancesToClusters(
+                    embeddings: speakerEmbeddings,
+                    clusters: clusters,
+                    distancesToClusters: ClusterDistances(type: .min, distances: [], otherIndices: []))
+                
+                var clustersToUsers: [Int: String] = [:]
+                var tmpClusters = clusters
+                while true {
+                    let (uIntMinIndex, minDistance) = vDSP.indexOfMinimum(minDistanceToClusters.distances)
+                    if minDistance >= speakerThreshold {
+                        break
+                    }
+                    let minIndex = Int(uIntMinIndex)
+                    
+                    let clusterIndex = minDistanceToClusters.otherIndices[minIndex]
+                    let speaker = speakers[minIndex]
+                    
+                    clustersToUsers[clusterIndex] = speaker.id
+
+                    speaker.currentEmbedding = clusters[clusterIndex].centroid
+
+                    tmpClusters[clusterIndex] = Cluster(embeddingIndices: [], centroid: [])
+                    
+                    minDistanceToClusters = computeDistancesToClusters(
+                        embeddings: speakerEmbeddings,
+                        clusters: tmpClusters,
+                        distancesToClusters: minDistanceToClusters,
+                        removedEmbeddingIndex: minIndex,
+                        removedClusterIndex: clusterIndex)
+                }
+                
+                // Add new users for remaining clusters.
+                for (clusterIndex, cluster) in tmpClusters.enumerated() where !cluster.centroid.isEmpty {
+                    let speakerID = createNewSpeaker(embedding: cluster.centroid, duration: 0.0)
+                    clustersToUsers[clusterIndex] = speakerID
+                }
+                
+                // Map valid embeddings to their speaker IDs.
+                for (i, validEmbeddingIndex) in validEmbeddingIndices.enumerated() {
+                    newEmbeddingsToSpeakersIDs[validEmbeddingIndex] =
+                        clustersToUsers[validNewEmbeddingsToClusters[i]!]
+                }
+                
+                // Get rid of excessive embeddings (farthest ones from centroid of each cluster).
+                var removedEmbeddingIndices: Set<Int> = []
+                for cluster in clusters {
+                    guard cluster.embeddingIndices.count > maxEmbeddingsPerSpeaker else {
+                        continue
+                    }
+                    let clusterEmbeddings = cluster.embeddingIndices.reduce(into: [[Float]]()) {
+                        $0.append(embeddings[$1])
+                    }
+                    var maxDistanceToClusters = computeDistancesToClusters(
+                        embeddings: clusterEmbeddings,
+                        clusters: [cluster],
+                        distancesToClusters: ClusterDistances(type: .max, distances: [], otherIndices: []))
+
+                    var removedClusterEmbeddingsCount: Int = 0
+                    while cluster.embeddingIndices.count - removedClusterEmbeddingsCount > maxEmbeddingsPerSpeaker {
+                        let (uIntMaxIndex, _) = vDSP.indexOfMaximum(maxDistanceToClusters.distances)
+                        let maxIndex = Int(uIntMaxIndex)
+                        
+                        removedEmbeddingIndices.insert(cluster.embeddingIndices[maxIndex])
+                        removedClusterEmbeddingsCount += 1
+
+                        maxDistanceToClusters.distances[maxIndex] = -.infinity
+                        
+//                        maxDistanceToClusters = computeDistancesToClusters(
+//                            embeddings: clusterEmbeddings,
+//                            clusters: clusters,
+//                            distancesToClusters: maxDistanceToClusters,
+//                            removedEmbeddingIndex: maxIndex)
+                    }
+                }
+
+                if !removedEmbeddingIndices.isEmpty {
+                    embeddings = embeddings
+                        .enumerated()
+                        .filter { !removedEmbeddingIndices.contains($0.offset) }
+                        .map { $0.element }
+                    
+                    self.minClusterDistances = ClusterDistances(
+                        type: minClusterDistances.type,
+                        distances: minClusterDistances.distances
+                            .enumerated()
+                            .filter { !removedEmbeddingIndices.contains($0.offset) }
+                            .map { $0.element },
+                        otherIndices: minClusterDistances.otherIndices
+                            .enumerated()
+                            .filter { !removedEmbeddingIndices.contains($0.offset) }
+                            .map { $0.element }
+                    )
+                }
+            }
+            
+            // Recheck embeddings that was filtered out due to minSpeechDuration. They may be
+            // associated with speakers, but should not be used for clustering.
+            for i in recheckEmbeddingIndices {
+                let (closesetSpeakerID, distance) = findClosestSpeaker(to: newEmbeddings[i])
+                guard let closesetSpeakerID, distance < speakerThreshold else {
+                    // Corresponding speaker not found. Ignored.
+                    continue
+                }
+                newEmbeddingsToSpeakersIDs[i] = closesetSpeakerID
+            }
+            
+            // Update durations and updatedAt of speakers.
+            for (i, speakerID) in newEmbeddingsToSpeakersIDs {
+                let speaker = speakerDatabase[speakerID]!
+                speaker.duration += durations[i]
+                speaker.updatedAt = Date()
+            }
+            
+            return (0..<newEmbeddings.count).map { speakerDatabase[newEmbeddingsToSpeakersIDs[$0] ?? ""] }
         }
     }
 
@@ -99,7 +280,7 @@ public class SpeakerManager {
                 let newSpeakerId = createNewSpeaker(
                     embedding: embedding,
                     duration: speechDuration,
-                    distanceToClosest: distance
+//                    distanceToClosest: distance
                 )
 
                 // Return the Speaker object
@@ -120,7 +301,7 @@ public class SpeakerManager {
         var closestSpeakerId: String?
 
         for (speakerId, speaker) in speakerDatabase {
-            let distance = cosineDistance(embedding, speaker.currentEmbedding)
+            let distance = cosineDist(embedding, speaker.currentEmbedding)
             if distance < minDistance {
                 minDistance = distance
                 closestSpeakerId = speakerId
@@ -163,8 +344,8 @@ public class SpeakerManager {
 
     private func createNewSpeaker(
         embedding: [Float],
-        duration: Float,
-        distanceToClosest: Float
+        duration: Float
+//        distanceToClosest: Float
     ) -> String {
         let newSpeakerId = String(nextSpeakerId)
         nextSpeakerId += 1
@@ -179,12 +360,13 @@ public class SpeakerManager {
         )
 
         // Add initial raw embedding
-        let initialRaw = RawEmbedding(segmentId: UUID(), embedding: embedding, timestamp: Date())
-        newSpeaker.addRawEmbedding(initialRaw)
+//        let initialRaw = RawEmbedding(segmentId: UUID(), embedding: embedding, timestamp: Date())
+//        newSpeaker.addRawEmbedding(initialRaw)
 
         speakerDatabase[newSpeakerId] = newSpeaker
 
-        logger.info("Created new speaker \(newSpeakerId) (distance to closest: \(distanceToClosest))")
+//        logger.info("Created new speaker \(newSpeakerId) (distance to closest: \(distanceToClosest))")
+        logger.info("Created new speaker \(newSpeakerId)")
         return newSpeakerId
     }
 
