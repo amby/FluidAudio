@@ -54,6 +54,7 @@ public class SpeakerManager {
                     continue
                 }
 
+                speaker.clusterized = false
                 speakerDatabase[speaker.id] = speaker
                 embeddings.append(speaker.currentEmbedding)
 
@@ -76,44 +77,54 @@ public class SpeakerManager {
         }
     }
     
-    // Assigns speakers to given embeddings.
+    // Assigns speakers to given embeddings. Also returns absolute indices for valid embeddings and
+    // -1 for all other embeddings.
     public func assignSpeakers(embeddings newEmbeddings: [[Float]],
                                durations: [Float],
-                               confidences: [Float]) -> [Speaker?] {
+                               confidences: [Float]) -> ([Speaker?], [Int]) {
         precondition(newEmbeddings.count == durations.count && durations.count == confidences.count,
                      "Mismatched number of embeddings (\(newEmbeddings.count)), " +
                      "durations (\(durations.count)) and confidences (\(confidences.count))")
         
         guard !newEmbeddings.isEmpty else {
-            return []
+            return ([], [])
         }
         
         var newEmbeddingsToSpeakersIDs: [Int: String] = [:]
+        var newEmbeddingIndices: [Int] = []
         return queue.sync(flags: .barrier) {
             var validEmbeddingIndices: [Int] = []
             var recheckEmbeddingIndices: [Int] = []
             for (i, embedding) in newEmbeddings.enumerated() {
                 guard !embedding.isEmpty, embedding.count == Self.embeddingSize else {
+                    newEmbeddingIndices.append(-1)
                     continue
                 }
                 guard durations[i] >= minSpeechDuration else {
                     recheckEmbeddingIndices.append(i)
+                    newEmbeddingIndices.append(-1)
                     continue
                 }
+                newEmbeddingIndices.append(embeddings.count)
                 embeddings.append(embedding)
                 validEmbeddingIndices.append(i)
             }
             
             guard !validEmbeddingIndices.isEmpty || !recheckEmbeddingIndices.isEmpty else {
-                return .init(repeating: nil, count: newEmbeddings.count)
+                return (.init(repeating: nil, count: newEmbeddings.count), newEmbeddingIndices)
             }
             
             if !validEmbeddingIndices.isEmpty {
                 // Perform clusterization of all embedding collected so far.
-                let (minClusterDistances, clusters) = clusterize(maxDistance: speakerThreshold,
-                                                                 embeddings: embeddings,
-                                                                 minClusterDistances: minClusterDistances)
+                // FIXME: Minimum cluster count should depend on number of inital speakers. Probably.
+                let (minClusterDistances, clusters) = clusterize(
+                    maxDistance: speakerThreshold,
+                    minClusterCount: speakerDatabase.values.count { $0.clusterized },
+                    embeddings: embeddings,
+                    minClusterDistances: minClusterDistances)
                 
+//                print("MIN CLUSTER DISTANCES: \(embeddings.count) \(minClusterDistances)")
+//                print("CLUSTERS: \(clusters.map { $0.embeddingIndices } )")
                 self.minClusterDistances = minClusterDistances
                 
                 let validNewEmbeddingsStartIndex = embeddings.count - validEmbeddingIndices.count
@@ -140,6 +151,8 @@ public class SpeakerManager {
                 var tmpClusters = clusters
                 while true {
                     let (uIntMinIndex, minDistance) = vDSP.indexOfMinimum(minDistanceToClusters.distances)
+                    // FIXME: For initially known speakers we may need to use a smaller threshold
+                    // to avoid matching them with someone else.
                     if minDistance >= speakerThreshold {
                         break
                     }
@@ -151,6 +164,7 @@ public class SpeakerManager {
                     clustersToUsers[clusterIndex] = speaker.id
 
                     speaker.currentEmbedding = clusters[clusterIndex].centroid
+                    speaker.clusterized = true
 
                     tmpClusters[clusterIndex] = Cluster(embeddingIndices: [], centroid: [])
                     
@@ -165,8 +179,11 @@ public class SpeakerManager {
                 // Add new users for remaining clusters.
                 for (clusterIndex, cluster) in tmpClusters.enumerated() where !cluster.centroid.isEmpty {
                     let speakerID = createNewSpeaker(embedding: cluster.centroid, duration: 0.0)
+                    speakerDatabase[speakerID]!.clusterized = true
                     clustersToUsers[clusterIndex] = speakerID
                 }
+                
+//                print("CLUSTERS TO USERS: \(clustersToUsers) \(newEmbeddings.count) \(validEmbeddingIndices) \(recheckEmbeddingIndices)")
                 
                 // Map valid embeddings to their speaker IDs.
                 for (i, validEmbeddingIndex) in validEmbeddingIndices.enumerated() {
@@ -244,7 +261,8 @@ public class SpeakerManager {
                 speaker.updatedAt = Date()
             }
             
-            return (0..<newEmbeddings.count).map { speakerDatabase[newEmbeddingsToSpeakersIDs[$0] ?? ""] }
+            return ((0..<newEmbeddings.count).map { speakerDatabase[newEmbeddingsToSpeakersIDs[$0] ?? ""] },
+                    newEmbeddingIndices)
         }
     }
 

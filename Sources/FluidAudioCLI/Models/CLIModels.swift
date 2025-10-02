@@ -146,6 +146,7 @@ extension TimedSpeakerSegment: Codable {
         self.init(
             speakerId: speakerId,
             embedding: embedding,
+            embeddingIndex: 0,  // Placeholder index for CLI models
             startTimeSeconds: startTimeSeconds,
             endTimeSeconds: endTimeSeconds,
             qualityScore: qualityScore

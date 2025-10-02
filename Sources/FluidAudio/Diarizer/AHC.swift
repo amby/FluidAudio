@@ -119,6 +119,7 @@ public struct ClusterDistances {
 // returns minimal cluster distances (to avoid unnecessary computations when processing streamed
 // audio embeddings).
 public func clusterize(maxDistance: Float, // Maximum distance threshold.
+                       minClusterCount: Int = 0, // Minumum number of clusters to get.
                        embeddings: [[Float]],
                        minClusterDistances: ClusterDistances) -> (ClusterDistances, [Cluster]) {
     guard !embeddings.isEmpty else {
@@ -128,16 +129,25 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
     var sums = embeddings
     var centroids = embeddings
     var clusters: [[Int]] = (0..<embeddings.count).map { [$0] }
+    var clusterCount: Int = clusters.count
     
     let resultMinClusterDistances = updateClusterDistances(embeddings: embeddings,
-                                                              clusterDistances: minClusterDistances)
+                                                           clusterDistances: minClusterDistances)
     
     var minClusterDistances = resultMinClusterDistances
     while true {
         let (uIntMinIndex, minDistance) = vDSP.indexOfMinimum(minClusterDistances.distances)
+//        print("SEG", uIntMinIndex, minDistance, maxDistance, minClusterDistances, clusters)
 //        print("MIN DISTANCE: \(minDistance), \(minClusterDistances.distances), \(sums), \(centroids), \(clusters)")
         if minDistance >= maxDistance {
             // Clusterization is complete.
+//            print("SEG CHECK", updateClusterDistances(
+//                embeddings: centroids,
+//                clusterDistances: ClusterDistances(
+//                    type: .min,
+//                    distances: [],
+//                    otherIndices: []),
+//                removedEmbeddingIndices: minClusterDistances.distances.enumerated().filter { $0.element.isNaN }.map { $0.offset } ))
             break
         }
         let minIndex = Int(uIntMinIndex)
@@ -150,22 +160,29 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
         
         sums[minIndex] = sumEmbeddings(sums[minIndex], sums[otherIndex])
         centroids[minIndex] = divEmbedding(sums[minIndex], Float(clusters[minIndex].count))
-        
+
+        clusterCount -= 1
+        if clusterCount == minClusterCount {
+            // The requested minimum number of clusters is reached.
+            break
+        }
+
 //        minClusterDistances.distances[otherIndex] = Float.nan
 //        minClusterDistances.otherIndices[otherIndex] = -1 // Optional.
         
         minClusterDistances = updateClusterDistances(embeddings: centroids,
-                                                        clusterDistances: minClusterDistances,
-                                                        updatedEmbeddingIndices: [minIndex],
-                                                        removedEmbeddingIndices: [otherIndex])
+                                                     clusterDistances: minClusterDistances,
+                                                     updatedEmbeddingIndices: [minIndex],
+                                                     removedEmbeddingIndices: [otherIndex])
     }
 
     return (
         resultMinClusterDistances,
         clusters
-            .filter { !$0.isEmpty }
-            .enumerated().map { Cluster(embeddingIndices: $0.element,
-                                        centroid: centroids[$0.offset]) }
+            .enumerated()
+            .filter { !$0.element.isEmpty }
+            .map { Cluster(embeddingIndices: $0.element,
+                           centroid: centroids[$0.offset]) }
     )
 }
 
@@ -242,7 +259,7 @@ func updateClusterDistances(embeddings: [[Float]],
             }
             let distance = cosineDist(embeddings[i], embeddings[k])
             clusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
-//            minClusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance)
+//            clusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance)
         }
     }
     

@@ -61,6 +61,7 @@ final class CITests: XCTestCase {
         let segment = TimedSpeakerSegment(
             speakerId: "Speaker 1",
             embedding: embedding,
+            embeddingIndex: 0,
             startTimeSeconds: 10.5,
             endTimeSeconds: 25.3,
             qualityScore: 0.95

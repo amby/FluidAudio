@@ -40,13 +40,14 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
     /// This ensures the batch assignment method handles empty inputs gracefully
     /// without throwing errors or returning unexpected results.
     func testAssignSpeakersEmptyInput() {
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: [],
             durations: [],
             confidences: []
         )
         
-        XCTAssertTrue(result.isEmpty)
+        XCTAssertTrue(speakers.isEmpty)
+        XCTAssertTrue(indices.isEmpty)
     }
         
     /// Tests batch assignment with valid embeddings of correct dimensions.
@@ -60,17 +61,21 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [2.0, 1.5]
         let confidences: [Float] = [0.8, 0.9]
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(speakers.count, 2)
         // Should create new speakers for both embeddings
-        XCTAssertNotNil(result[0])
-        XCTAssertNotNil(result[1])
-        XCTAssertNotEqual(result[0]?.id, result[1]?.id)
+        XCTAssertNotNil(speakers[0])
+        XCTAssertNotNil(speakers[1])
+        XCTAssertNotEqual(speakers[0]?.id, speakers[1]?.id)
+        // Should return valid embedding indices
+        XCTAssertEqual(indices.count, 2)
+        XCTAssertTrue(indices[0] >= 0)
+        XCTAssertTrue(indices[1] >= 0)
     }
     
     /// Tests batch assignment with embeddings that have durations below the minimum threshold.
@@ -84,16 +89,20 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [0.5, 0.3] // Below minSpeechDuration
         let confidences: [Float] = [0.8, 0.9]
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(speakers.count, 2)
         // Should return nil for short duration embeddings
-        XCTAssertNil(result[0])
-        XCTAssertNil(result[1])
+        XCTAssertNil(speakers[0])
+        XCTAssertNil(speakers[1])
+        // Should return -1 for invalid embedding indices
+        XCTAssertEqual(indices.count, 2)
+        XCTAssertEqual(indices[0], -1)
+        XCTAssertEqual(indices[1], -1)
     }
     
     /// Tests batch assignment with a mix of valid and invalid embeddings.
@@ -108,18 +117,23 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [1.0, 1.0, 2.0]
         let confidences: [Float] = [0.8, 0.9, 0.7]
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(speakers.count, 3)
         // Should return nil for invalid embeddings
-        XCTAssertNil(result[0])
-        XCTAssertNil(result[1])
+        XCTAssertNil(speakers[0])
+        XCTAssertNil(speakers[1])
         // Should create speaker for valid embedding
-        XCTAssertNotNil(result[2])
+        XCTAssertNotNil(speakers[2])
+        // Should return -1 for invalid embeddings, valid index for valid embedding
+        XCTAssertEqual(indices.count, 3)
+        XCTAssertEqual(indices[0], -1)
+        XCTAssertEqual(indices[1], -1)
+        XCTAssertTrue(indices[2] >= 0)
     }
     
     // MARK: - Clustering and Speaker Association Tests
@@ -135,16 +149,20 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [2.0, 1.5]
         let confidences: [Float] = [0.8, 0.9]
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(speakers.count, 2)
         // Should create speakers for both embeddings
-        XCTAssertNotNil(result[0])
-        XCTAssertNotNil(result[1])
+        XCTAssertNotNil(speakers[0])
+        XCTAssertNotNil(speakers[1])
+        // Should return valid embedding indices
+        XCTAssertEqual(indices.count, 2)
+        XCTAssertTrue(indices[0] >= 0)
+        XCTAssertTrue(indices[1] >= 0)
     }
     
     /// Tests batch assignment when existing speakers are already present in the system.
@@ -171,18 +189,22 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [2.0, 1.5]
         let confidences: [Float] = [0.8, 0.9]
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(speakers.count, 2)
         // First embedding should be associated with existing speaker
-        XCTAssertEqual(result[0]?.id, "existing-1")
+        XCTAssertEqual(speakers[0]?.id, "existing-1")
         // Second embedding should create new speaker
-        XCTAssertNotNil(result[1])
-        XCTAssertNotEqual(result[1]?.id, "existing-1")
+        XCTAssertNotNil(speakers[1])
+        XCTAssertNotEqual(speakers[1]?.id, "existing-1")
+        // Should return valid embedding indices
+        XCTAssertEqual(indices.count, 2)
+        XCTAssertTrue(indices[0] >= 0)
+        XCTAssertTrue(indices[1] >= 0)
     }
     
     // MARK: - Edge Cases and Error Handling
@@ -195,15 +217,18 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [2.0]
         let confidences: [Float] = [0.0] // Zero confidence
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(speakers.count, 1)
         // Should still create speaker despite zero confidence
-        XCTAssertNotNil(result[0])
+        XCTAssertNotNil(speakers[0])
+        // Should return valid embedding index
+        XCTAssertEqual(indices.count, 1)
+        XCTAssertTrue(indices[0] >= 0)
     }
     
     /// Tests batch assignment with maximum confidence values.
@@ -214,14 +239,17 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [2.0]
         let confidences: [Float] = [1.0] // Maximum confidence
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 1)
-        XCTAssertNotNil(result[0])
+        XCTAssertEqual(speakers.count, 1)
+        XCTAssertNotNil(speakers[0])
+        // Should return valid embedding index
+        XCTAssertEqual(indices.count, 1)
+        XCTAssertTrue(indices[0] >= 0)
     }
     
     /// Tests batch assignment with a large number of embeddings to verify performance and scalability.
@@ -232,15 +260,18 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations = Array(repeating: Float(2.0), count: 20)
         let confidences = Array(repeating: Float(0.8), count: 20)
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 20)
+        XCTAssertEqual(speakers.count, 20)
         // Should create speakers for all embeddings
-        XCTAssertTrue(result.allSatisfy { $0 != nil })
+        XCTAssertTrue(speakers.allSatisfy { $0 != nil })
+        // Should return valid embedding indices
+        XCTAssertEqual(indices.count, 20)
+        XCTAssertTrue(indices.allSatisfy { $0 >= 0 })
     }
     
     /// Tests batch assignment with a mix of valid and invalid embeddings in a single batch.
@@ -257,19 +288,26 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [2.0, 1.0, 1.5, 1.0, 2.5]
         let confidences: [Float] = [0.8, 0.9, 0.7, 0.6, 0.85]
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 5)
+        XCTAssertEqual(speakers.count, 5)
         // Should create speakers only for valid embeddings
-        XCTAssertNotNil(result[0])
-        XCTAssertNil(result[1])
-        XCTAssertNotNil(result[2])
-        XCTAssertNil(result[3])
-        XCTAssertNotNil(result[4])
+        XCTAssertNotNil(speakers[0])
+        XCTAssertNil(speakers[1])
+        XCTAssertNotNil(speakers[2])
+        XCTAssertNil(speakers[3])
+        XCTAssertNotNil(speakers[4])
+        // Should return valid indices for valid embeddings, -1 for invalid ones
+        XCTAssertEqual(indices.count, 5)
+        XCTAssertTrue(indices[0] >= 0)
+        XCTAssertEqual(indices[1], -1)
+        XCTAssertTrue(indices[2] >= 0)
+        XCTAssertEqual(indices[3], -1)
+        XCTAssertTrue(indices[4] >= 0)
     }
     
     // MARK: - Performance Tests
@@ -283,12 +321,13 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let confidences = Array(repeating: Float(0.8), count: 100)
         
         measure {
-            let result = speakerManager.assignSpeakers(
+            let (speakers, indices) = speakerManager.assignSpeakers(
                 embeddings: embeddings,
                 durations: durations,
                 confidences: confidences
             )
-            XCTAssertEqual(result.count, 100)
+            XCTAssertEqual(speakers.count, 100)
+            XCTAssertEqual(indices.count, 100)
         }
     }
     
@@ -310,15 +349,18 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [2.0, 1.5, 3.0, 2.5, 1.0]
         let confidences: [Float] = [0.8, 0.9, 0.7, 0.85, 0.6]
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 5)
+        XCTAssertEqual(speakers.count, 5)
         // Should handle extreme values gracefully
-        XCTAssertTrue(result.allSatisfy { $0 != nil })
+        XCTAssertTrue(speakers.allSatisfy { $0 != nil })
+        // Should return valid embedding indices
+        XCTAssertEqual(indices.count, 5)
+        XCTAssertTrue(indices.allSatisfy { $0 >= 0 })
     }
     
     /// Tests batch assignment with identical embeddings to verify clustering behavior.
@@ -332,15 +374,18 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [2.0, 1.5, 3.0]
         let confidences: [Float] = [0.8, 0.9, 0.7]
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(speakers.count, 3)
         // Should handle duplicate embeddings gracefully
-        XCTAssertTrue(result.allSatisfy { $0 != nil })
+        XCTAssertTrue(speakers.allSatisfy { $0 != nil })
+        // Should return valid embedding indices
+        XCTAssertEqual(indices.count, 3)
+        XCTAssertTrue(indices.allSatisfy { $0 >= 0 })
     }
     
     /// Tests batch assignment with a very large number of embeddings to verify scalability.
@@ -353,15 +398,18 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations = Array(repeating: Float(2.0), count: 1000)
         let confidences = Array(repeating: Float(0.8), count: 1000)
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 1000)
+        XCTAssertEqual(speakers.count, 1000)
         // Should handle large batches without crashing
-        XCTAssertTrue(result.allSatisfy { $0 != nil })
+        XCTAssertTrue(speakers.allSatisfy { $0 != nil })
+        // Should return valid embedding indices
+        XCTAssertEqual(indices.count, 1000)
+        XCTAssertTrue(indices.allSatisfy { $0 >= 0 })
     }
     
     /// Tests batch assignment with a complex mix of valid and invalid embeddings including edge cases.
@@ -382,23 +430,167 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let durations: [Float] = [2.0, 1.0, 1.5, 1.0, 2.5, 1.0, 1.0]
         let confidences: [Float] = [0.8, 0.9, 0.7, 0.6, 0.85, 0.5, 0.4]
         
-        let result = speakerManager.assignSpeakers(
+        let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
             confidences: confidences
         )
         
-        XCTAssertEqual(result.count, 7)
+        XCTAssertEqual(speakers.count, 7)
         // assignSpeakers behavior: creates speakers for valid embeddings, nil for invalid ones
-        XCTAssertNotNil(result[0]) // Valid embedding
-        XCTAssertNil(result[1]) // Empty embedding - invalid
-        XCTAssertNotNil(result[2]) // Valid embedding
-        XCTAssertNil(result[3]) // Wrong dimension - invalid
-        XCTAssertNotNil(result[4]) // Valid embedding
-        XCTAssertNotNil(result[5]) // NaN embedding - handled gracefully
-        XCTAssertNotNil(result[6]) // Infinity embedding - handled gracefully
+        XCTAssertNotNil(speakers[0]) // Valid embedding
+        XCTAssertNil(speakers[1]) // Empty embedding - invalid
+        XCTAssertNotNil(speakers[2]) // Valid embedding
+        XCTAssertNil(speakers[3]) // Wrong dimension - invalid
+        XCTAssertNotNil(speakers[4]) // Valid embedding
+        XCTAssertNotNil(speakers[5]) // NaN embedding - handled gracefully
+        XCTAssertNotNil(speakers[6]) // Infinity embedding - handled gracefully
+        // Should return valid indices for valid embeddings, -1 for invalid ones
+        XCTAssertEqual(indices.count, 7)
+        XCTAssertTrue(indices[0] >= 0) // Valid embedding
+        XCTAssertEqual(indices[1], -1) // Empty embedding - invalid
+        XCTAssertTrue(indices[2] >= 0) // Valid embedding
+        XCTAssertEqual(indices[3], -1) // Wrong dimension - invalid
+        XCTAssertTrue(indices[4] >= 0) // Valid embedding
+        XCTAssertTrue(indices[5] >= 0) // NaN embedding - handled gracefully
+        XCTAssertTrue(indices[6] >= 0) // Infinity embedding - handled gracefully
     }
     
+    // MARK: - EmbeddingIndex Tracking Tests
+    
+    /// Tests that assignSpeakers returns correct embedding indices for valid embeddings.
+    /// Verifies that the embedding indices correspond to the order of valid embeddings
+    /// and that invalid embeddings return -1.
+    func testAssignSpeakersEmbeddingIndexTracking() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2), // Valid
+            [], // Invalid - empty
+            [0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2), // Valid
+            [1.0, 2.0], // Invalid - wrong dimension
+            [0.0, 0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 3) // Valid
+        ]
+        let durations: [Float] = [2.0, 1.0, 1.5, 1.0, 2.5]
+        let confidences: [Float] = [0.8, 0.9, 0.7, 0.6, 0.85]
+        
+        let (speakers, indices) = speakerManager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            confidences: confidences
+        )
+        
+        XCTAssertEqual(speakers.count, 5)
+        XCTAssertEqual(indices.count, 5)
+        
+        // Valid embeddings should have valid indices
+        XCTAssertNotNil(speakers[0])
+        XCTAssertTrue(indices[0] >= 0)
+        
+        // Invalid embeddings should have -1 indices
+        XCTAssertNil(speakers[1])
+        XCTAssertEqual(indices[1], -1)
+        
+        XCTAssertNotNil(speakers[2])
+        XCTAssertTrue(indices[2] >= 0)
+        
+        XCTAssertNil(speakers[3])
+        XCTAssertEqual(indices[3], -1)
+        
+        XCTAssertNotNil(speakers[4])
+        XCTAssertTrue(indices[4] >= 0)
+        
+        // Indices should be sequential for valid embeddings
+        let validIndices = indices.filter { $0 >= 0 }
+        let sortedIndices = validIndices.sorted()
+        XCTAssertEqual(validIndices, sortedIndices)
+    }
+    
+    /// Tests that embedding indices are consistent across multiple calls.
+    /// Verifies that the embedding index tracking maintains consistency
+    /// when multiple batches are processed.
+    func testAssignSpeakersEmbeddingIndexConsistency() {
+        let embeddings1: [[Float]] = [
+            [1.0, 0.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2),
+            [0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2)
+        ]
+        let durations1: [Float] = [2.0, 1.5]
+        let confidences1: [Float] = [0.8, 0.9]
+        
+        let (_, indices1) = speakerManager.assignSpeakers(
+            embeddings: embeddings1,
+            durations: durations1,
+            confidences: confidences1
+        )
+        
+        let embeddings2: [[Float]] = [
+            [0.0, 0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 3)
+        ]
+        let durations2: [Float] = [2.0]
+        let confidences2: [Float] = [0.7]
+        
+        let (_, indices2) = speakerManager.assignSpeakers(
+            embeddings: embeddings2,
+            durations: durations2,
+            confidences: confidences2
+        )
+        
+        // First batch should have indices 0 and 1
+        XCTAssertEqual(indices1.count, 2)
+        XCTAssertTrue(indices1[0] >= 0)
+        XCTAssertTrue(indices1[1] >= 0)
+        
+        // Second batch should have index 2 (continuing from first batch)
+        XCTAssertEqual(indices2.count, 1)
+        XCTAssertTrue(indices2[0] >= 0)
+        XCTAssertTrue(indices2[0] > indices1.max() ?? -1)
+    }
+    
+    /// Tests that embedding indices handle edge cases correctly.
+    /// Verifies that the embedding index tracking works correctly
+    /// with empty batches and mixed valid/invalid embeddings.
+    func testAssignSpeakersEmbeddingIndexEdgeCases() {
+        // Test with all invalid embeddings
+        let invalidEmbeddings: [[Float]] = [[], [1.0, 2.0]]
+        let invalidDurations: [Float] = [1.0, 1.0]
+        let invalidConfidences: [Float] = [0.8, 0.9]
+        
+        let (invalidSpeakers, invalidIndices) = speakerManager.assignSpeakers(
+            embeddings: invalidEmbeddings,
+            durations: invalidDurations,
+            confidences: invalidConfidences
+        )
+        
+        XCTAssertEqual(invalidSpeakers.count, 2)
+        XCTAssertEqual(invalidIndices.count, 2)
+        XCTAssertNil(invalidSpeakers[0])
+        XCTAssertNil(invalidSpeakers[1])
+        XCTAssertEqual(invalidIndices[0], -1)
+        XCTAssertEqual(invalidIndices[1], -1)
+        
+        // Test with mixed valid/invalid embeddings
+        let mixedEmbeddings: [[Float]] = [
+            [1.0, 0.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2), // Valid
+            [], // Invalid
+            [0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2) // Valid
+        ]
+        let mixedDurations: [Float] = [2.0, 1.0, 1.5]
+        let mixedConfidences: [Float] = [0.8, 0.9, 0.7]
+        
+        let (mixedSpeakers, mixedIndices) = speakerManager.assignSpeakers(
+            embeddings: mixedEmbeddings,
+            durations: mixedDurations,
+            confidences: mixedConfidences
+        )
+        
+        XCTAssertEqual(mixedSpeakers.count, 3)
+        XCTAssertEqual(mixedIndices.count, 3)
+        XCTAssertNotNil(mixedSpeakers[0])
+        XCTAssertNil(mixedSpeakers[1])
+        XCTAssertNotNil(mixedSpeakers[2])
+        XCTAssertTrue(mixedIndices[0] >= 0)
+        XCTAssertEqual(mixedIndices[1], -1)
+        XCTAssertTrue(mixedIndices[2] >= 0)
+    }
+
     // MARK: - Helper Methods
     
     /// Generates test embeddings for performance and scalability testing.

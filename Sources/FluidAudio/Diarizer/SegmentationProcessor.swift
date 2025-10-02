@@ -109,6 +109,11 @@ public struct SegmentationProcessor {
                 )
             }
         }
+        
+//        print("RAW SEGMENTS:")
+//        for frame in segments[0] {
+//            print("[" + frame.map { String(format: "%.5f", $0) }.joined(separator: ", ") + "]")
+//        }
 
         return powersetConversionOptimized(segments)
     }

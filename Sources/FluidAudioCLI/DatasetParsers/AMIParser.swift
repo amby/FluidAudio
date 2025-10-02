@@ -164,6 +164,7 @@ struct AMIParser {
                         let timedSegment = TimedSpeakerSegment(
                             speakerId: participantId,  // Use real AMI participant ID
                             embedding: generatePlaceholderEmbedding(for: participantId),
+                            embeddingIndex: 0,  // Placeholder index for AMI data
                             startTimeSeconds: Float(segment.startTime),
                             endTimeSeconds: Float(segment.endTime),
                             qualityScore: 1.0
@@ -210,6 +211,7 @@ struct AMIParser {
                 TimedSpeakerSegment(
                     speakerId: speakerId,
                     embedding: dummyEmbedding,
+                    embeddingIndex: 0,  // Placeholder index for AMI data
                     startTimeSeconds: startTime,
                     endTimeSeconds: endTime,
                     qualityScore: 1.0

@@ -444,6 +444,7 @@ enum StreamDiarizationBenchmark {
                     let adjustedSegment = TimedSpeakerSegment(
                         speakerId: segment.speakerId,
                         embedding: segment.embedding,
+                        embeddingIndex: segment.embeddingIndex,
                         startTimeSeconds: segment.startTimeSeconds + Float(chunkStartTime),
                         endTimeSeconds: segment.endTimeSeconds + Float(chunkStartTime),
                         qualityScore: segment.qualityScore

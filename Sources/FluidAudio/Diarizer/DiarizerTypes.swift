@@ -150,6 +150,7 @@ public struct TimedSpeakerSegment: Sendable, Identifiable {
     public let id = UUID()
     public let speakerId: String
     public let embedding: [Float]
+    public let embeddingIndex: Int
     public let startTimeSeconds: Float
     public let endTimeSeconds: Float
     public let qualityScore: Float
@@ -159,11 +160,12 @@ public struct TimedSpeakerSegment: Sendable, Identifiable {
     }
 
     public init(
-        speakerId: String, embedding: [Float], startTimeSeconds: Float, endTimeSeconds: Float,
-        qualityScore: Float
+        speakerId: String, embedding: [Float], embeddingIndex: Int,
+        startTimeSeconds: Float, endTimeSeconds: Float, qualityScore: Float
     ) {
         self.speakerId = speakerId
         self.embedding = embedding
+        self.embeddingIndex = embeddingIndex
         self.startTimeSeconds = startTimeSeconds
         self.endTimeSeconds = endTimeSeconds
         self.qualityScore = qualityScore

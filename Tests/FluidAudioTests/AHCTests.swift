@@ -169,6 +169,7 @@ final class AHCTests: XCTestCase {
         let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
         let (resultDistances, clusters) = clusterize(
             maxDistance: 0.5,
+            minClusterCount: 0,
             embeddings: [],
             minClusterDistances: minDistances
         )
@@ -185,6 +186,7 @@ final class AHCTests: XCTestCase {
         let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
         let (_, clusters) = clusterize(
             maxDistance: 0.5,
+            minClusterCount: 0,
             embeddings: [embedding],
             minClusterDistances: minDistances
         )
@@ -201,6 +203,7 @@ final class AHCTests: XCTestCase {
         let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
         let (_, clusters) = clusterize(
             maxDistance: 0.5,
+            minClusterCount: 0,
             embeddings: [embedding, embedding],
             minClusterDistances: minDistances
         )
@@ -217,6 +220,7 @@ final class AHCTests: XCTestCase {
         let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
         let (_, clusters) = clusterize(
             maxDistance: 0.5,
+            minClusterCount: 0,
             embeddings: [embedding1, embedding2],
             minClusterDistances: minDistances
         )
@@ -256,6 +260,7 @@ final class AHCTests: XCTestCase {
         let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
         let (_, clusters) = clusterize(
             maxDistance: 0.5,
+            minClusterCount: 0,
             embeddings: embeddings,
             minClusterDistances: minDistances
         )
@@ -282,6 +287,7 @@ final class AHCTests: XCTestCase {
         )
         let (_, clusters) = clusterize(
             maxDistance: 0.5,
+            minClusterCount: 0,
             embeddings: embeddings,
             minClusterDistances: existingMinDistances
         )
@@ -302,6 +308,7 @@ final class AHCTests: XCTestCase {
         let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
         let (_, clusters) = clusterize(
             maxDistance: 0.5,
+            minClusterCount: 0,
             embeddings: embeddings,
             minClusterDistances: minDistances
         )
@@ -904,6 +911,98 @@ final class AHCTests: XCTestCase {
             )
             XCTAssertEqual(result.distances.count, embeddings.count)
         }
+    }
+    
+    // MARK: - MinClusterCount Tests
+    
+    /// Tests clustering with minClusterCount parameter to ensure minimum cluster preservation.
+    /// Verifies that the clustering algorithm stops when the minimum number of clusters is reached,
+    /// preventing over-clustering of embeddings.
+    func testClusterizeWithMinClusterCount() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5,
+            minClusterCount: 2, // Force at least 2 clusters
+            embeddings: embeddings,
+            minClusterDistances: minDistances
+        )
+        
+        XCTAssertGreaterThanOrEqual(clusters.count, 2)
+    }
+    
+    /// Tests clustering with minClusterCount equal to number of embeddings.
+    /// Verifies that when minClusterCount equals the number of embeddings,
+    /// no clustering occurs and each embedding remains in its own cluster.
+    func testClusterizeWithMinClusterCountEqualToEmbeddings() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.1, // Very low threshold
+            minClusterCount: 3, // Equal to number of embeddings
+            embeddings: embeddings,
+            minClusterDistances: minDistances
+        )
+        
+        XCTAssertEqual(clusters.count, 3)
+        // Each cluster should contain exactly one embedding
+        for cluster in clusters {
+            XCTAssertEqual(cluster.embeddingIndices.count, 1)
+        }
+    }
+    
+    /// Tests clustering with minClusterCount greater than number of embeddings.
+    /// Verifies that the algorithm handles the edge case where minClusterCount
+    /// exceeds the number of available embeddings gracefully.
+    func testClusterizeWithMinClusterCountGreaterThanEmbeddings() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5,
+            minClusterCount: 5, // Greater than number of embeddings
+            embeddings: embeddings,
+            minClusterDistances: minDistances
+        )
+        
+        // Should not exceed the number of embeddings
+        XCTAssertLessThanOrEqual(clusters.count, embeddings.count)
+    }
+    
+    /// Tests clustering with minClusterCount and high distance threshold.
+    /// Verifies that the algorithm respects both the distance threshold and
+    /// the minimum cluster count constraint simultaneously.
+    func testClusterizeWithMinClusterCountAndHighThreshold() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 2.0, // High threshold - would normally cluster everything
+            minClusterCount: 2, // But force at least 2 clusters
+            embeddings: embeddings,
+            minClusterDistances: minDistances
+        )
+        
+        XCTAssertGreaterThanOrEqual(clusters.count, 2)
     }
     
 }

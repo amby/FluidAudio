@@ -11,6 +11,7 @@ public final class Speaker: Identifiable, Codable, Equatable, Hashable {
     public var createdAt: Date
     public var updatedAt: Date
     public var updateCount: Int = 1
+    public var clusterized: Bool = false
     public var rawEmbeddings: [RawEmbedding] = []
 
     public init(

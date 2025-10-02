@@ -32,6 +32,7 @@ final class SpeakerTests: XCTestCase {
         XCTAssertEqual(speaker.duration, 5.0)
         XCTAssertEqual(speaker.updateCount, 1)
         XCTAssertTrue(speaker.rawEmbeddings.isEmpty)
+        XCTAssertFalse(speaker.clusterized)
     }
 
     func testSpeakerDefaultName() {
@@ -43,6 +44,29 @@ final class SpeakerTests: XCTestCase {
 
         // Default name should be the ID
         XCTAssertEqual(speaker.name, "1")
+    }
+
+    /// Tests the clusterized property of Speaker objects.
+    /// Verifies that the clusterized property is properly initialized and can be modified.
+    func testSpeakerClusterizedProperty() {
+        let embedding = createDistinctEmbedding(pattern: 1)
+        let speaker = Speaker(
+            id: "test1",
+            name: "Alice",
+            currentEmbedding: embedding,
+            duration: 5.0
+        )
+        
+        // Initially should be false
+        XCTAssertFalse(speaker.clusterized)
+        
+        // Should be able to set to true
+        speaker.clusterized = true
+        XCTAssertTrue(speaker.clusterized)
+        
+        // Should be able to set back to false
+        speaker.clusterized = false
+        XCTAssertFalse(speaker.clusterized)
     }
 
     // MARK: - Speaker Enrollment Workflow

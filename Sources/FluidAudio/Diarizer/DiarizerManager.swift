@@ -27,7 +27,7 @@ public final class DiarizerManager {
         self.speakerManager = SpeakerManager(
             // Speaker assignment threshold: 0.9x clustering threshold
             // Slightly more aggressive to reduce over-segmentation
-            speakerThreshold: config.clusteringThreshold * 1.2,
+            speakerThreshold: config.clusteringThreshold, // * 1.2,
             // Embedding update threshold: 0.8x clustering threshold
             // More aggressive (lower threshold) to update embeddings with high-confidence matches
             embeddingThreshold: config.clusteringThreshold * 0.8,
@@ -233,6 +233,9 @@ public final class DiarizerManager {
             audioChunk: paddedChunk,
             segmentationModel: models.segmentationModel
         )
+        
+//        print("BINARIZED SEGMENTS: \(binarizedSegments.count) \(binarizedSegments[0].count) \(binarizedSegments[0][0].count)")
+//        print("BINARIZED SEGMENTS: \(binarizedSegments)")
 
         let slidingFeature = segmentationProcessor.createSlidingWindowFeature(
             binarizedSegments: binarizedSegments, chunkOffset: chunkOffset)
@@ -258,7 +261,11 @@ public final class DiarizerManager {
             }
             masks.append(speakerMask)
         }
-
+        
+//        print("ACTIVITY PRE FRAMES", binarizedSegments[0].map { $0.reduce(0, +) })
+//        print("ACTIVE SPEAKERS", binarizedSegments[0].map { ($0.firstIndex { $0 != 0} ?? -1) + 1 })
+//        print("MASKS", masks)
+        
         let embeddings = try embeddingExtractor.getEmbeddings(
             audio: Array(paddedChunk),
             masks: masks,
@@ -275,11 +282,13 @@ public final class DiarizerManager {
         var embeddingInvalidCount = 0
         var clusteringProcessedCount = 0
 
+        var embeddingIndices: [Int] = []
         var validEmbeddings: [[Float]] = []
         var validSpeakerIndices: [Int] = []
         var durations: [Float] = []
         var confidences: [Float] = []
         for (speakerIndex, activity) in speakerActivities.enumerated() {
+            embeddingIndices.append(-1)
             if activity > self.config.minActiveFramesCount {
                 let embedding = embeddings[speakerIndex]
                 if validateEmbedding(embedding) {
@@ -314,15 +323,17 @@ public final class DiarizerManager {
             }
         }
         
-        let speakers = speakerManager.assignSpeakers(embeddings: validEmbeddings,
-                                                     durations: durations,
-                                                     confidences: confidences)
+        let (speakers, validEmbeddingIndices) = speakerManager.assignSpeakers(
+            embeddings: validEmbeddings,
+            durations: durations,
+            confidences: confidences)
         for (i, speaker) in speakers.enumerated() {
             guard let speaker else {
                 continue
             }
-            let speakerIndex = validSpeakerIndices[i]
+            let speakerIndex: Int = validSpeakerIndices[i]
             speakerIds[speakerIndex] = speaker.id
+            embeddingIndices[speakerIndex] = validEmbeddingIndices[i]
         }
         
         let clusteringTime = Date().timeIntervalSince(clusteringStartTime)
@@ -331,6 +342,7 @@ public final class DiarizerManager {
             binarizedSegments: binarizedSegments,
             slidingWindow: slidingFeature.slidingWindow,
             embeddings: embeddings,
+            embeddingIndices: embeddingIndices,
             speakerIds: speakerIds,
             speakerActivities: speakerActivities
         )
@@ -364,6 +376,7 @@ public final class DiarizerManager {
         binarizedSegments: [[[Float]]],
         slidingWindow: SlidingWindow,
         embeddings: [[Float]],
+        embeddingIndices: [Int],
         speakerIds: [String],
         speakerActivities: [Float]
     ) -> [TimedSpeakerSegment] {
@@ -404,6 +417,7 @@ public final class DiarizerManager {
                         endFrame: frameIdx,
                         slidingWindow: slidingWindow,
                         embeddings: embeddings,
+                        embeddingIndices: embeddingIndices,
                         speakerIds: speakerIds,
                         speakerActivities: speakerActivities
                     ) {
@@ -420,6 +434,7 @@ public final class DiarizerManager {
                     endFrame: numFrames,
                     slidingWindow: slidingWindow,
                     embeddings: embeddings,
+                    embeddingIndices: embeddingIndices,
                     speakerIds: speakerIds,
                     speakerActivities: speakerActivities
                 ) {
@@ -442,6 +457,7 @@ public final class DiarizerManager {
         endFrame: Int,
         slidingWindow: SlidingWindow,
         embeddings: [[Float]],
+        embeddingIndices: [Int],
         speakerIds: [String],
         speakerActivities: [Float]
     ) -> TimedSpeakerSegment? {
@@ -456,17 +472,20 @@ public final class DiarizerManager {
         let endTime = slidingWindow.time(forFrame: endFrame)
         let duration = endTime - startTime
 
-        if Float(duration) < config.minSpeechDuration {
+        if Float(duration) < 0.2 { //config.minSpeechDuration {
+//            print("FILTER OUT SEGMENT FROM \(startTime) TO \(endTime) DURATION \(duration)")
             return nil
         }
 
         let embedding = embeddings[speakerIndex]
+        let embeddingIndex = embeddingIndices[speakerIndex]
         let activity = speakerActivities[speakerIndex]
         let quality = calculateEmbeddingQuality(embedding) * (activity / Float(endFrame - startFrame))
 
         return TimedSpeakerSegment(
             speakerId: speakerIds[speakerIndex],
             embedding: embedding,
+            embeddingIndex: embeddingIndex,
             startTimeSeconds: Float(startTime),
             endTimeSeconds: Float(endTime),
             qualityScore: quality
