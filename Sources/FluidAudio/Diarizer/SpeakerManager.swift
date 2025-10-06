@@ -15,6 +15,8 @@ public class SpeakerManager {
     internal var speakerDatabase: [String: Speaker] = [:]
     // All currently clusterized embeddings.
     internal var embeddings: [[Float]] = []
+    // Weights of the embeddings.
+    internal var embeddingWeights: [Float] = []
     // Computed minimal cluster distances.
     internal var minClusterDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
     private var nextSpeakerId = 1
@@ -57,6 +59,7 @@ public class SpeakerManager {
                 speaker.clusterized = false
                 speakerDatabase[speaker.id] = speaker
                 embeddings.append(speaker.currentEmbedding)
+                embeddingWeights.append(1.0)
 
                 // Try to extract numeric ID if it's a pure number
                 if let numericId = Int(speaker.id) {
@@ -81,10 +84,10 @@ public class SpeakerManager {
     // -1 for all other embeddings.
     public func assignSpeakers(embeddings newEmbeddings: [[Float]],
                                durations: [Float],
-                               confidences: [Float]) -> ([Speaker?], [Int]) {
-        precondition(newEmbeddings.count == durations.count && durations.count == confidences.count,
+                               embeddingWeights newEmbeddingWeights: [Float]) -> ([Speaker?], [Int]) {
+        precondition(newEmbeddings.count == durations.count && durations.count == newEmbeddingWeights.count,
                      "Mismatched number of embeddings (\(newEmbeddings.count)), " +
-                     "durations (\(durations.count)) and confidences (\(confidences.count))")
+                     "durations (\(durations.count)) and embedding weights (\(newEmbeddingWeights.count))")
         
         guard !newEmbeddings.isEmpty else {
             return ([], [])
@@ -107,6 +110,7 @@ public class SpeakerManager {
                 }
                 newEmbeddingIndices.append(embeddings.count)
                 embeddings.append(embedding)
+                embeddingWeights.append(newEmbeddingWeights[i])
                 validEmbeddingIndices.append(i)
             }
             
@@ -121,9 +125,12 @@ public class SpeakerManager {
                     maxDistance: speakerThreshold,
                     minClusterCount: speakerDatabase.values.count { $0.clusterized },
                     embeddings: embeddings,
+                    embeddingWeights: embeddingWeights,
                     minClusterDistances: minClusterDistances)
                 
 //                print("MIN CLUSTER DISTANCES: \(embeddings.count) \(minClusterDistances)")
+//                print("EMBEDDING WEIGHT:", embeddingWeights)
+//                print("EMBEDDING MAGNITUDES", embeddings.map { embeddingMagnitude($0) })
 //                print("CLUSTERS: \(clusters.map { $0.embeddingIndices } )")
                 self.minClusterDistances = minClusterDistances
                 
@@ -224,11 +231,24 @@ public class SpeakerManager {
                 }
 
                 if !removedEmbeddingIndices.isEmpty {
+                    let orderedRemovedEmbeddingIndices = Array(removedEmbeddingIndices).sorted()
+//                    print("REMOVE EXTRA EMBEDDINGS", orderedRemovedEmbeddingIndices)
+                    // Recompute min distances for all removed embeddings before resizing the former.
+                    let minClusterDistances = updateClusterDistances(
+                        embeddings: embeddings,
+                        clusterDistances: self.minClusterDistances,
+                        removedEmbeddingIndices: Array(orderedRemovedEmbeddingIndices))
+
                     embeddings = embeddings
                         .enumerated()
                         .filter { !removedEmbeddingIndices.contains($0.offset) }
                         .map { $0.element }
-                    
+
+                    embeddingWeights = embeddingWeights
+                        .enumerated()
+                        .filter { !removedEmbeddingIndices.contains($0.offset) }
+                        .map { $0.element }
+
                     self.minClusterDistances = ClusterDistances(
                         type: minClusterDistances.type,
                         distances: minClusterDistances.distances
@@ -238,7 +258,11 @@ public class SpeakerManager {
                         otherIndices: minClusterDistances.otherIndices
                             .enumerated()
                             .filter { !removedEmbeddingIndices.contains($0.offset) }
-                            .map { $0.element }
+                            .map { (offset, element) in
+                                // Shift back all remaining indices taking into account removed ones.
+                                return element - Int(orderedRemovedEmbeddingIndices.firstIndex { $0 > element } ??
+                                                     orderedRemovedEmbeddingIndices.count)
+                            }
                     )
                 }
             }

@@ -32,6 +32,13 @@ public func cosineDist(_ a: [Float], _ b: [Float]) -> Float {
     return 1.0 - similarity
 }
 
+// Calculates given embedding magnitude.
+public func embeddingMagnitude(_ embedding: [Float]) -> Float {
+    var magnitude: Float = 0
+    vDSP_svesq(embedding, 1, &magnitude, vDSP_Length(embedding.count))
+    return sqrt(magnitude)
+}
+
 // Calculates element-wise sum of two given embeddings.
 func sumEmbeddings(_ a: [Float], _ b: [Float]) -> [Float] {
     precondition(a.count == b.count, "Different embedding dimensions")
@@ -56,6 +63,22 @@ func divEmbedding(_ a: [Float], _ b: Float) -> [Float] {
         buffer, initializedCount in
         
         vDSP_vsdiv(a, 1,
+                   [b],
+                   buffer.baseAddress!, 1,
+                   vDSP_Length(count))
+        
+        initializedCount = count
+    }
+    return c
+}
+
+// Multiplies given vector by specified scalar.
+func mulEmbedding(_ a: [Float], _ b: Float) -> [Float] {
+    let count = a.count
+    let c = [Float](unsafeUninitializedCapacity: count) {
+        buffer, initializedCount in
+        
+        vDSP_vsmul(a, 1,
                    [b],
                    buffer.baseAddress!, 1,
                    vDSP_Length(count))
@@ -121,12 +144,15 @@ public struct ClusterDistances {
 public func clusterize(maxDistance: Float, // Maximum distance threshold.
                        minClusterCount: Int = 0, // Minumum number of clusters to get.
                        embeddings: [[Float]],
+                       embeddingWeights: [Float], 
                        minClusterDistances: ClusterDistances) -> (ClusterDistances, [Cluster]) {
     guard !embeddings.isEmpty else {
         return (minClusterDistances, [])
     }
     
-    var sums = embeddings
+//    var weightsSums = embeddingWeights
+    var weightsSums = embeddingWeights.enumerated().map { $0.element * embeddingMagnitude(embeddings[$0.offset]) }
+    var sums = embeddings.enumerated().map { mulEmbedding($0.element, weightsSums[$0.offset]) }
     var centroids = embeddings
     var clusters: [[Int]] = (0..<embeddings.count).map { [$0] }
     var clusterCount: Int = clusters.count
@@ -158,8 +184,21 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
         clusters[minIndex].append(contentsOf: clusters[otherIndex])
         clusters[otherIndex] = []
         
+//        sums[minIndex] = sumEmbeddings(sums[minIndex], sums[otherIndex])
+//        centroids[minIndex] = divEmbedding(sums[minIndex], Float(clusters[minIndex].count))
+
         sums[minIndex] = sumEmbeddings(sums[minIndex], sums[otherIndex])
-        centroids[minIndex] = divEmbedding(sums[minIndex], Float(clusters[minIndex].count))
+        weightsSums[minIndex] += weightsSums[otherIndex]
+        centroids[minIndex] = divEmbedding(sums[minIndex], weightsSums[minIndex])
+
+        
+//        let alpha = minDistance / maxDistance
+//        centroids[minIndex] = sumEmbeddings(mulEmbedding(sums[minIndex], alpha),
+//                                            mulEmbedding(sums[otherIndex], (1 - alpha)))
+
+//        let alpha = 0.5 + 0.5 * minDistance / maxDistance
+//        centroids[minIndex] = sumEmbeddings(mulEmbedding(sums[minIndex], alpha),
+//                                            mulEmbedding(sums[otherIndex], (1 - alpha)))
 
         clusterCount -= 1
         if clusterCount == minClusterCount {

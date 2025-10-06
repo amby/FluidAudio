@@ -40,10 +40,11 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
     /// This ensures the batch assignment method handles empty inputs gracefully
     /// without throwing errors or returning unexpected results.
     func testAssignSpeakersEmptyInput() {
+        let embeddingWeights: [Float] = []
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: [],
             durations: [],
-            confidences: []
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertTrue(speakers.isEmpty)
@@ -59,12 +60,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             [0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2)
         ]
         let durations: [Float] = [2.0, 1.5]
-        let confidences: [Float] = [0.8, 0.9]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 2)
@@ -87,12 +88,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             [0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2)
         ]
         let durations: [Float] = [0.5, 0.3] // Below minSpeechDuration
-        let confidences: [Float] = [0.8, 0.9]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 2)
@@ -115,12 +116,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             [1.0, 0.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2) // Valid
         ]
         let durations: [Float] = [1.0, 1.0, 2.0]
-        let confidences: [Float] = [0.8, 0.9, 0.7]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 3)
@@ -147,12 +148,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         
         let embeddings = [baseEmbedding, similarEmbedding]
         let durations: [Float] = [2.0, 1.5]
-        let confidences: [Float] = [0.8, 0.9]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 2)
@@ -187,12 +188,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             [0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2)  // Different
         ]
         let durations: [Float] = [2.0, 1.5]
-        let confidences: [Float] = [0.8, 0.9]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 2)
@@ -215,12 +216,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
     func testAssignSpeakersWithZeroConfidence() {
         let embeddings: [[Float]] = [[1.0, 0.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2)]
         let durations: [Float] = [2.0]
-        let confidences: [Float] = [0.0] // Zero confidence
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 1)
@@ -237,12 +238,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
     func testAssignSpeakersWithHighConfidence() {
         let embeddings: [[Float]] = [[1.0, 0.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2)]
         let durations: [Float] = [2.0]
-        let confidences: [Float] = [1.0] // Maximum confidence
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 1)
@@ -258,12 +259,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
     func testAssignSpeakersWithLargeBatch() {
         let embeddings = generateTestEmbeddings(count: 20, dimension: SpeakerManager.embeddingSize)
         let durations = Array(repeating: Float(2.0), count: 20)
-        let confidences = Array(repeating: Float(0.8), count: 20)
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 20)
@@ -286,12 +287,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             [0.0, 0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 3)  // Valid
         ]
         let durations: [Float] = [2.0, 1.0, 1.5, 1.0, 2.5]
-        let confidences: [Float] = [0.8, 0.9, 0.7, 0.6, 0.85]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 5)
@@ -318,13 +319,13 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
     func testAssignSpeakersPerformance() {
         let embeddings = generateTestEmbeddings(count: 100, dimension: SpeakerManager.embeddingSize)
         let durations = Array(repeating: Float(2.0), count: 100)
-        let confidences = Array(repeating: Float(0.8), count: 100)
         
         measure {
+            let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
             let (speakers, indices) = speakerManager.assignSpeakers(
                 embeddings: embeddings,
                 durations: durations,
-                confidences: confidences
+                embeddingWeights: embeddingWeights
             )
             XCTAssertEqual(speakers.count, 100)
             XCTAssertEqual(indices.count, 100)
@@ -347,12 +348,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             Array(repeating: Float.leastNormalMagnitude, count: SpeakerManager.embeddingSize) // Very small values
         ] as [[Float]]
         let durations: [Float] = [2.0, 1.5, 3.0, 2.5, 1.0]
-        let confidences: [Float] = [0.8, 0.9, 0.7, 0.85, 0.6]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 5)
@@ -372,12 +373,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let baseEmbedding: [Float] = [1.0, 0.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2)
         let embeddings = [baseEmbedding, baseEmbedding, baseEmbedding]
         let durations: [Float] = [2.0, 1.5, 3.0]
-        let confidences: [Float] = [0.8, 0.9, 0.7]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 3)
@@ -396,12 +397,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         
         let embeddings = generateTestEmbeddings(count: 1000, dimension: SpeakerManager.embeddingSize)
         let durations = Array(repeating: Float(2.0), count: 1000)
-        let confidences = Array(repeating: Float(0.8), count: 1000)
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 1000)
@@ -428,12 +429,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             Array(repeating: Float.infinity, count: SpeakerManager.embeddingSize) // Invalid - contains infinity
         ]
         let durations: [Float] = [2.0, 1.0, 1.5, 1.0, 2.5, 1.0, 1.0]
-        let confidences: [Float] = [0.8, 0.9, 0.7, 0.6, 0.85, 0.5, 0.4]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 7)
@@ -470,12 +471,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             [0.0, 0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 3) // Valid
         ]
         let durations: [Float] = [2.0, 1.0, 1.5, 1.0, 2.5]
-        let confidences: [Float] = [0.8, 0.9, 0.7, 0.6, 0.85]
         
+        let embeddingWeights: [Float] = Array(repeating: 1.0, count: embeddings.count)
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            confidences: confidences
+            embeddingWeights: embeddingWeights
         )
         
         XCTAssertEqual(speakers.count, 5)
@@ -513,24 +514,24 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             [0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2)
         ]
         let durations1: [Float] = [2.0, 1.5]
-        let confidences1: [Float] = [0.8, 0.9]
         
+        let embeddingWeights1: [Float] = Array(repeating: 1.0, count: embeddings1.count)
         let (_, indices1) = speakerManager.assignSpeakers(
             embeddings: embeddings1,
             durations: durations1,
-            confidences: confidences1
+            embeddingWeights: embeddingWeights1
         )
         
         let embeddings2: [[Float]] = [
             [0.0, 0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 3)
         ]
         let durations2: [Float] = [2.0]
-        let confidences2: [Float] = [0.7]
         
+        let embeddingWeights2: [Float] = Array(repeating: 1.0, count: embeddings2.count)
         let (_, indices2) = speakerManager.assignSpeakers(
             embeddings: embeddings2,
             durations: durations2,
-            confidences: confidences2
+            embeddingWeights: embeddingWeights2
         )
         
         // First batch should have indices 0 and 1
@@ -551,12 +552,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         // Test with all invalid embeddings
         let invalidEmbeddings: [[Float]] = [[], [1.0, 2.0]]
         let invalidDurations: [Float] = [1.0, 1.0]
-        let invalidConfidences: [Float] = [0.8, 0.9]
         
+        let invalidEmbeddingWeights: [Float] = Array(repeating: 1.0, count: invalidEmbeddings.count)
         let (invalidSpeakers, invalidIndices) = speakerManager.assignSpeakers(
             embeddings: invalidEmbeddings,
             durations: invalidDurations,
-            confidences: invalidConfidences
+            embeddingWeights: invalidEmbeddingWeights
         )
         
         XCTAssertEqual(invalidSpeakers.count, 2)
@@ -573,12 +574,12 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             [0.0, 1.0] + .init(repeating: 0.0, count: SpeakerManager.embeddingSize - 2) // Valid
         ]
         let mixedDurations: [Float] = [2.0, 1.0, 1.5]
-        let mixedConfidences: [Float] = [0.8, 0.9, 0.7]
         
+        let mixedEmbeddingWeights: [Float] = Array(repeating: 1.0, count: mixedEmbeddings.count)
         let (mixedSpeakers, mixedIndices) = speakerManager.assignSpeakers(
             embeddings: mixedEmbeddings,
             durations: mixedDurations,
-            confidences: mixedConfidences
+            embeddingWeights: mixedEmbeddingWeights
         )
         
         XCTAssertEqual(mixedSpeakers.count, 3)

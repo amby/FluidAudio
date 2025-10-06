@@ -287,6 +287,7 @@ public final class DiarizerManager {
         var validSpeakerIndices: [Int] = []
         var durations: [Float] = []
         var confidences: [Float] = []
+        var embeddingWeights: [Float] = []
         for (speakerIndex, activity) in speakerActivities.enumerated() {
             embeddingIndices.append(-1)
             if activity > self.config.minActiveFramesCount {
@@ -296,11 +297,13 @@ public final class DiarizerManager {
                     // Each frame = 0.016875s (pyannote model step size)
                     let duration = Float(activity) * Float(slidingFeature.slidingWindow.step)
 
-                    let quality = calculateEmbeddingQuality(embedding) * (activity / Float(numFrames))
+                    let embeddingWeight = Float(activity) / Float(numFrames)
+                    let quality = calculateEmbeddingQuality(embedding) * embeddingWeight
 
                     validEmbeddings.append(embedding)
                     durations.append(duration)
                     confidences.append(quality)
+                    embeddingWeights.append(embeddingWeight)
                     validSpeakerIndices.append(speakerIndex)
                     speakerIds.append("")
                     
@@ -326,7 +329,7 @@ public final class DiarizerManager {
         let (speakers, validEmbeddingIndices) = speakerManager.assignSpeakers(
             embeddings: validEmbeddings,
             durations: durations,
-            confidences: confidences)
+            embeddingWeights: embeddingWeights)
         for (i, speaker) in speakers.enumerated() {
             guard let speaker else {
                 continue
@@ -355,7 +358,7 @@ public final class DiarizerManager {
 
         return (segments, timings)
     }
-
+    
     /// Count activity frames per speaker.
     private func calculateSpeakerActivities(_ binarizedSegments: [[[Float]]]) -> [Float] {
         let numSpeakers = binarizedSegments[0][0].count

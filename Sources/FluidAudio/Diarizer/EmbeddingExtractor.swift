@@ -123,6 +123,27 @@ public class EmbeddingExtractor {
 
         return embeddings
     }
+    
+    /// Extracts speakers embeddings by specifying their normailized intervals of activity.
+    public func getEmbeddings<C>(
+        audio: C,
+        intervals: [(startTime: Float, endTime: Float)]
+    ) throws -> [[Float]]
+    where C: RandomAccessCollection, C.Element == Float, C.Index == Int {
+        // Convert intervals to masks.
+        let masks: [[Float]] = intervals.map {
+            let start = Int(589 * $0.startTime)
+            let middle = Int(589 * ($0.endTime - $0.startTime))
+            let end = 589 - (start + middle)
+            precondition(end >= 0, "Interval to mask conversion failed")
+            
+            return .init(repeating: 0, count: start) +
+                .init(repeating: 1, count: middle) +
+                .init(repeating: 0, count: end)
+        }
+        
+        return try getEmbeddings(audio: audio, masks: masks)
+    }
 
     private func fillMaskBufferOptimized(
         masks: [[Float]],

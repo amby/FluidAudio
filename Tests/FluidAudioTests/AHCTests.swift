@@ -167,10 +167,12 @@ final class AHCTests: XCTestCase {
     /// Should return empty clusters and preserve the input minClusterDistances.
     func testClusterizeEmptyInput() {
         let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        let embeddingWeights: [Float] = []
         let (resultDistances, clusters) = clusterize(
             maxDistance: 0.5,
             minClusterCount: 0,
             embeddings: [],
+            embeddingWeights: embeddingWeights,
             minClusterDistances: minDistances
         )
         
@@ -188,6 +190,7 @@ final class AHCTests: XCTestCase {
             maxDistance: 0.5,
             minClusterCount: 0,
             embeddings: [embedding],
+            embeddingWeights: [1.0],
             minClusterDistances: minDistances
         )
         
@@ -205,6 +208,7 @@ final class AHCTests: XCTestCase {
             maxDistance: 0.5,
             minClusterCount: 0,
             embeddings: [embedding, embedding],
+            embeddingWeights: [1.0, 1.0],
             minClusterDistances: minDistances
         )
         
@@ -222,6 +226,7 @@ final class AHCTests: XCTestCase {
             maxDistance: 0.5,
             minClusterCount: 0,
             embeddings: [embedding1, embedding2],
+            embeddingWeights: [1.0, 1.0],
             minClusterDistances: minDistances
         )
         
@@ -240,6 +245,7 @@ final class AHCTests: XCTestCase {
         let (_, clusters) = clusterize(
             maxDistance: 2.0, // High threshold
             embeddings: [embedding1, embedding2],
+            embeddingWeights: [1.0, 1.0],
             minClusterDistances: minDistances
         )
         
@@ -262,6 +268,7 @@ final class AHCTests: XCTestCase {
             maxDistance: 0.5,
             minClusterCount: 0,
             embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
         )
         
@@ -289,6 +296,7 @@ final class AHCTests: XCTestCase {
             maxDistance: 0.5,
             minClusterCount: 0,
             embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: existingMinDistances
         )
         
@@ -310,6 +318,7 @@ final class AHCTests: XCTestCase {
             maxDistance: 0.5,
             minClusterCount: 0,
             embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
         )
         
@@ -329,6 +338,7 @@ final class AHCTests: XCTestCase {
         let (_, clusters) = clusterize(
             maxDistance: 10.0, // Very high threshold
             embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
         )
         
@@ -349,6 +359,7 @@ final class AHCTests: XCTestCase {
         let (_, clusters) = clusterize(
             maxDistance: 0.01, // Very low threshold
             embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
         )
         
@@ -371,6 +382,7 @@ final class AHCTests: XCTestCase {
             let (_, clusters) = clusterize(
                 maxDistance: 0.5,
                 embeddings: embeddings,
+                embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
                 minClusterDistances: minDistances
             )
             XCTAssertGreaterThan(clusters.count, 0)
@@ -387,6 +399,7 @@ final class AHCTests: XCTestCase {
             let (_, clusters) = clusterize(
                 maxDistance: 0.5,
                 embeddings: embeddings,
+                embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
                 minClusterDistances: minDistances
             )
             XCTAssertGreaterThan(clusters.count, 0)
@@ -931,6 +944,7 @@ final class AHCTests: XCTestCase {
             maxDistance: 0.5,
             minClusterCount: 2, // Force at least 2 clusters
             embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
         )
         
@@ -952,6 +966,7 @@ final class AHCTests: XCTestCase {
             maxDistance: 0.1, // Very low threshold
             minClusterCount: 3, // Equal to number of embeddings
             embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
         )
         
@@ -976,6 +991,7 @@ final class AHCTests: XCTestCase {
             maxDistance: 0.5,
             minClusterCount: 5, // Greater than number of embeddings
             embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
         )
         
@@ -999,10 +1015,102 @@ final class AHCTests: XCTestCase {
             maxDistance: 2.0, // High threshold - would normally cluster everything
             minClusterCount: 2, // But force at least 2 clusters
             embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
         )
         
         XCTAssertGreaterThanOrEqual(clusters.count, 2)
+    }
+    
+    // MARK: - Embedding Magnitude Tests
+    
+    /// Tests that embeddingMagnitude correctly calculates the magnitude of a vector.
+    /// Magnitude is the square root of the sum of squares of all elements.
+    func testEmbeddingMagnitude() {
+        let embedding: [Float] = [3.0, 4.0, 0.0]
+        let magnitude = embeddingMagnitude(embedding)
+        XCTAssertEqual(magnitude, 5.0, accuracy: 0.001) // sqrt(3^2 + 4^2 + 0^2) = 5
+    }
+    
+    /// Tests that embeddingMagnitude returns 0 for zero vector.
+    /// Zero vector should have zero magnitude.
+    func testEmbeddingMagnitudeZeroVector() {
+        let embedding: [Float] = [0.0, 0.0, 0.0]
+        let magnitude = embeddingMagnitude(embedding)
+        XCTAssertEqual(magnitude, 0.0, accuracy: 0.001)
+    }
+    
+    /// Tests that embeddingMagnitude handles negative values correctly.
+    /// Magnitude should be positive regardless of element signs.
+    func testEmbeddingMagnitudeNegativeValues() {
+        let embedding: [Float] = [-3.0, -4.0, 0.0]
+        let magnitude = embeddingMagnitude(embedding)
+        XCTAssertEqual(magnitude, 5.0, accuracy: 0.001) // sqrt((-3)^2 + (-4)^2 + 0^2) = 5
+    }
+    
+    /// Tests that embeddingMagnitude works with single element vectors.
+    /// Should handle edge case of 1D vectors correctly.
+    func testEmbeddingMagnitudeSingleElement() {
+        let embedding: [Float] = [5.0]
+        let magnitude = embeddingMagnitude(embedding)
+        XCTAssertEqual(magnitude, 5.0, accuracy: 0.001)
+    }
+    
+    // MARK: - Mul Embedding Tests
+    
+    /// Tests that mulEmbedding correctly multiplies a vector by a scalar.
+    /// Each element should be multiplied by the scalar value.
+    func testMulEmbedding() {
+        let embedding: [Float] = [1.0, 2.0, 3.0]
+        let scalar: Float = 2.5
+        let result = mulEmbedding(embedding, scalar)
+        let expected: [Float] = [2.5, 5.0, 7.5]
+        
+        XCTAssertEqual(result.count, expected.count)
+        for (i, value) in result.enumerated() {
+            XCTAssertEqual(value, expected[i], accuracy: 0.001)
+        }
+    }
+    
+    /// Tests that mulEmbedding with scalar 0 returns zero vector.
+    /// Multiplying by zero should result in all zeros.
+    func testMulEmbeddingWithZero() {
+        let embedding: [Float] = [1.0, 2.0, 3.0]
+        let scalar: Float = 0.0
+        let result = mulEmbedding(embedding, scalar)
+        let expected: [Float] = [0.0, 0.0, 0.0]
+        
+        XCTAssertEqual(result.count, expected.count)
+        for (i, value) in result.enumerated() {
+            XCTAssertEqual(value, expected[i], accuracy: 0.001)
+        }
+    }
+    
+    /// Tests that mulEmbedding with scalar 1 returns original vector.
+    /// Multiplying by 1 should preserve the original values.
+    func testMulEmbeddingWithOne() {
+        let embedding: [Float] = [1.0, 2.0, 3.0]
+        let scalar: Float = 1.0
+        let result = mulEmbedding(embedding, scalar)
+        
+        XCTAssertEqual(result.count, embedding.count)
+        for (i, value) in result.enumerated() {
+            XCTAssertEqual(value, embedding[i], accuracy: 0.001)
+        }
+    }
+    
+    /// Tests that mulEmbedding with negative scalar works correctly.
+    /// Should multiply each element by the negative scalar.
+    func testMulEmbeddingWithNegativeScalar() {
+        let embedding: [Float] = [1.0, 2.0, 3.0]
+        let scalar: Float = -2.0
+        let result = mulEmbedding(embedding, scalar)
+        let expected: [Float] = [-2.0, -4.0, -6.0]
+        
+        XCTAssertEqual(result.count, expected.count)
+        for (i, value) in result.enumerated() {
+            XCTAssertEqual(value, expected[i], accuracy: 0.001)
+        }
     }
     
 }
