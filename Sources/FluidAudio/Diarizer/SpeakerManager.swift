@@ -84,7 +84,8 @@ public class SpeakerManager {
     // -1 for all other embeddings.
     public func assignSpeakers(embeddings newEmbeddings: [[Float]],
                                durations: [Float],
-                               embeddingWeights newEmbeddingWeights: [Float]) -> ([Speaker?], [Int]) {
+                               embeddingWeights newEmbeddingWeights: [Float],
+                               maxSpeakerCount: Int = Int.max) -> ([Speaker?], [Int]) {
         precondition(newEmbeddings.count == durations.count && durations.count == newEmbeddingWeights.count,
                      "Mismatched number of embeddings (\(newEmbeddings.count)), " +
                      "durations (\(durations.count)) and embedding weights (\(newEmbeddingWeights.count))")
@@ -124,6 +125,7 @@ public class SpeakerManager {
                 let (minClusterDistances, clusters) = clusterize(
                     maxDistance: speakerThreshold,
                     minClusterCount: speakerDatabase.values.count { $0.clusterized },
+                    maxClusterCount: maxSpeakerCount,
                     embeddings: embeddings,
                     embeddingWeights: embeddingWeights,
                     minClusterDistances: minClusterDistances)

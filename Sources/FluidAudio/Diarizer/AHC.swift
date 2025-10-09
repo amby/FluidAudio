@@ -142,7 +142,8 @@ public struct ClusterDistances {
 // returns minimal cluster distances (to avoid unnecessary computations when processing streamed
 // audio embeddings).
 public func clusterize(maxDistance: Float, // Maximum distance threshold.
-                       minClusterCount: Int = 0, // Minumum number of clusters to get.
+                       minClusterCount: Int = 0, // Minumum number of clusters to form.
+                       maxClusterCount: Int = Int.max, // Maximum number of clusters to form.
                        embeddings: [[Float]],
                        embeddingWeights: [Float], 
                        minClusterDistances: ClusterDistances) -> (ClusterDistances, [Cluster]) {
@@ -165,7 +166,7 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
         let (uIntMinIndex, minDistance) = vDSP.indexOfMinimum(minClusterDistances.distances)
 //        print("SEG", uIntMinIndex, minDistance, maxDistance, minClusterDistances, clusters)
 //        print("MIN DISTANCE: \(minDistance), \(minClusterDistances.distances), \(sums), \(centroids), \(clusters)")
-        if minDistance >= maxDistance {
+        if minDistance >= maxDistance && clusterCount <= maxClusterCount {
             // Clusterization is complete.
 //            print("SEG CHECK", updateClusterDistances(
 //                embeddings: centroids,
@@ -203,6 +204,11 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
         clusterCount -= 1
         if clusterCount == minClusterCount {
             // The requested minimum number of clusters is reached.
+            break
+        }
+
+        if minDistance >= maxDistance && clusterCount <= maxClusterCount {
+            // Requested maximum number of clusters is reached.
             break
         }
 

@@ -508,6 +508,366 @@ final class SpeakerManagerTests: XCTestCase {
         XCTAssertLessThanOrEqual(info?.rawEmbeddings.count ?? 0, 50)
     }
 
+    // MARK: - MaxSpeakerCount Tests
+    
+    /// Tests assignSpeakers with maxSpeakerCount parameter to ensure maximum speaker limit.
+    /// Verifies that the clustering algorithm stops when the maximum number of speakers is reached,
+    /// preventing over-clustering of embeddings.
+    func testAssignSpeakersWithMaxSpeakerCount() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Create multiple distinct embeddings
+        let embeddings = (0..<6).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 6)
+        let weights = Array(repeating: 1.0 as Float, count: 6)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 2  // Limit to 2 speakers
+        )
+        
+        XCTAssertEqual(speakers.count, 6)
+        XCTAssertEqual(indices.count, 6)
+        
+        // Should have at most 2 unique speakers
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 2)
+    }
+    
+    /// Tests assignSpeakers with maxSpeakerCount equal to 1.
+    /// Verifies that when maxSpeakerCount is 1, all embeddings are assigned to a single speaker.
+    func testAssignSpeakersWithMaxSpeakerCountOne() {
+        let manager = SpeakerManager(speakerThreshold: 0.1)  // Low threshold
+        
+        // Create multiple distinct embeddings
+        let embeddings = (0..<3).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 3)
+        let weights = Array(repeating: 1.0 as Float, count: 3)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 1  // Force all into one speaker
+        )
+        
+        XCTAssertEqual(speakers.count, 3)
+        XCTAssertEqual(indices.count, 3)
+        
+        // All should be assigned to the same speaker
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertEqual(uniqueSpeakers.count, 1)
+    }
+    
+    /// Tests assignSpeakers with maxSpeakerCount greater than number of embeddings.
+    /// Verifies that the algorithm handles the edge case where maxSpeakerCount
+    /// exceeds the number of available embeddings gracefully.
+    func testAssignSpeakersWithMaxSpeakerCountGreaterThanEmbeddings() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Create only 2 embeddings
+        let embeddings = (0..<2).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 2)
+        let weights = Array(repeating: 1.0 as Float, count: 2)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 10  // Greater than number of embeddings
+        )
+        
+        XCTAssertEqual(speakers.count, 2)
+        XCTAssertEqual(indices.count, 2)
+        
+        // Should not exceed the number of embeddings
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 2)
+    }
+    
+    /// Tests assignSpeakers with maxSpeakerCount and low distance threshold.
+    /// Verifies that the algorithm respects both the distance threshold and
+    /// the maximum speaker count constraint simultaneously.
+    func testAssignSpeakersWithMaxSpeakerCountAndLowThreshold() {
+        let manager = SpeakerManager(speakerThreshold: 0.1)  // Low threshold
+        
+        // Create multiple distinct embeddings
+        let embeddings = (0..<5).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 5)
+        let weights = Array(repeating: 1.0 as Float, count: 5)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 2  // But limit to 2 speakers
+        )
+        
+        XCTAssertEqual(speakers.count, 5)
+        XCTAssertEqual(indices.count, 5)
+        
+        // Should have at most 2 unique speakers
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 2)
+    }
+    
+    /// Tests assignSpeakers with maxSpeakerCount equal to Int.max (default behavior).
+    /// Verifies that when maxSpeakerCount is Int.max, no maximum limit is enforced.
+    func testAssignSpeakersWithMaxSpeakerCountIntMax() {
+        let manager = SpeakerManager(speakerThreshold: 0.1)  // Low threshold
+        
+        // Create multiple distinct embeddings
+        let embeddings = (0..<3).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 3)
+        let weights = Array(repeating: 1.0 as Float, count: 3)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: Int.max  // No maximum limit
+        )
+        
+        XCTAssertEqual(speakers.count, 3)
+        XCTAssertEqual(indices.count, 3)
+        
+        // Should keep all separate due to low threshold
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertEqual(uniqueSpeakers.count, 3)
+    }
+    
+    /// Tests assignSpeakers with maxSpeakerCount and high distance threshold.
+    /// Verifies that the algorithm stops clustering when maxSpeakerCount is reached,
+    /// even if distance threshold would allow further clustering.
+    func testAssignSpeakersWithMaxSpeakerCountAndHighThreshold() {
+        let manager = SpeakerManager(speakerThreshold: 2.0)  // High threshold
+        
+        // Create multiple distinct embeddings
+        let embeddings = (0..<6).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 6)
+        let weights = Array(repeating: 1.0 as Float, count: 6)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 2  // But limit to 2 speakers
+        )
+        
+        XCTAssertEqual(speakers.count, 6)
+        XCTAssertEqual(indices.count, 6)
+        
+        // Should have at most 2 unique speakers
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 2)
+    }
+    
+    /// Tests assignSpeakers with maxSpeakerCount and known speakers.
+    /// Verifies that the algorithm respects maxSpeakerCount even when known speakers are present.
+    func testAssignSpeakersWithMaxSpeakerCountAndKnownSpeakers() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Initialize with known speakers
+        let knownSpeakers = [
+            Speaker(
+                id: "Alice",
+                name: "Alice",
+                currentEmbedding: createDistinctEmbedding(pattern: 10),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+            Speaker(
+                id: "Bob",
+                name: "Bob",
+                currentEmbedding: createDistinctEmbedding(pattern: 20),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        ]
+        manager.initializeKnownSpeakers(knownSpeakers)
+        
+        // Create new embeddings
+        let embeddings = (0..<4).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 4)
+        let weights = Array(repeating: 1.0 as Float, count: 4)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 3  // Limit total speakers to 3
+        )
+        
+        XCTAssertEqual(speakers.count, 4)
+        XCTAssertEqual(indices.count, 4)
+        
+        // Should have at most 3 unique speakers total (including known ones)
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 3)
+    }
+    
+    // MARK: - Integration Tests
+    
+    /// Tests the integration between maxClusterCount and maxSpeakerCount parameters.
+    /// Verifies that both parameters work together correctly in the clustering pipeline.
+    func testIntegrationMaxClusterCountAndMaxSpeakerCount() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Create embeddings that would normally form multiple clusters
+        let embeddings = (0..<8).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 8)
+        let weights = Array(repeating: 1.0 as Float, count: 8)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 3  // Limit to 3 speakers
+        )
+        
+        XCTAssertEqual(speakers.count, 8)
+        XCTAssertEqual(indices.count, 8)
+        
+        // Should have at most 3 unique speakers
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 3)
+        
+        // Verify that all embeddings are assigned to speakers
+        XCTAssertTrue(speakers.allSatisfy { $0 != nil })
+    }
+    
+    /// Tests the integration with known speakers and maxSpeakerCount.
+    /// Verifies that the algorithm correctly handles the combination of known speakers
+    /// and the maxSpeakerCount constraint.
+    func testIntegrationKnownSpeakersAndMaxSpeakerCount() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Initialize with 2 known speakers
+        let knownSpeakers = [
+            Speaker(
+                id: "Alice",
+                name: "Alice",
+                currentEmbedding: createDistinctEmbedding(pattern: 10),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+            Speaker(
+                id: "Bob",
+                name: "Bob",
+                currentEmbedding: createDistinctEmbedding(pattern: 20),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        ]
+        manager.initializeKnownSpeakers(knownSpeakers)
+        
+        // Create new embeddings
+        let embeddings = (0..<6).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 6)
+        let weights = Array(repeating: 1.0 as Float, count: 6)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 4  // Limit total speakers to 4 (2 known + 2 new)
+        )
+        
+        XCTAssertEqual(speakers.count, 6)
+        XCTAssertEqual(indices.count, 6)
+        
+        // Should have at most 4 unique speakers total
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 4)
+        
+        // Verify that all embeddings are assigned to speakers
+        XCTAssertTrue(speakers.allSatisfy { $0 != nil })
+    }
+    
+    /// Tests the integration with edge case where maxSpeakerCount is 1.
+    /// Verifies that when maxSpeakerCount is 1, all embeddings are assigned to a single speaker,
+    /// even with known speakers present.
+    func testIntegrationMaxSpeakerCountOneWithKnownSpeakers() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Initialize with 2 known speakers
+        let knownSpeakers = [
+            Speaker(
+                id: "Alice",
+                name: "Alice",
+                currentEmbedding: createDistinctEmbedding(pattern: 10),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+            Speaker(
+                id: "Bob",
+                name: "Bob",
+                currentEmbedding: createDistinctEmbedding(pattern: 20),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        ]
+        manager.initializeKnownSpeakers(knownSpeakers)
+        
+        // Create new embeddings
+        let embeddings = (0..<4).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 4)
+        let weights = Array(repeating: 1.0 as Float, count: 4)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 1  // Force all into one speaker
+        )
+        
+        XCTAssertEqual(speakers.count, 4)
+        XCTAssertEqual(indices.count, 4)
+        
+        // All should be assigned to the same speaker
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertEqual(uniqueSpeakers.count, 1)
+        
+        // Verify that all embeddings are assigned to speakers
+        XCTAssertTrue(speakers.allSatisfy { $0 != nil })
+    }
+    
+    /// Tests the integration with performance considerations.
+    /// Verifies that the new parameters don't significantly impact performance
+    /// and that the clustering algorithm completes within reasonable time bounds.
+    func testIntegrationPerformanceWithMaxSpeakerCount() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Create a larger dataset
+        let embeddings = (0..<20).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 20)
+        let weights = Array(repeating: 1.0 as Float, count: 20)
+        
+        measure {
+            let (speakers, indices) = manager.assignSpeakers(
+                embeddings: embeddings,
+                durations: durations,
+                embeddingWeights: weights,
+                maxSpeakerCount: 5  // Limit to 5 speakers
+            )
+            
+            XCTAssertEqual(speakers.count, 20)
+            XCTAssertEqual(indices.count, 20)
+            
+            // Should have at most 5 unique speakers
+            let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+            XCTAssertLessThanOrEqual(uniqueSpeakers.count, 5)
+        }
+    }
+
     // MARK: - Edge Cases
 
     func testSpeakerThresholdBoundaries() {

@@ -943,6 +943,7 @@ final class AHCTests: XCTestCase {
         let (_, clusters) = clusterize(
             maxDistance: 0.5,
             minClusterCount: 2, // Force at least 2 clusters
+            maxClusterCount: Int.max,
             embeddings: embeddings,
             embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
@@ -965,6 +966,7 @@ final class AHCTests: XCTestCase {
         let (_, clusters) = clusterize(
             maxDistance: 0.1, // Very low threshold
             minClusterCount: 3, // Equal to number of embeddings
+            maxClusterCount: Int.max,
             embeddings: embeddings,
             embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
@@ -990,6 +992,7 @@ final class AHCTests: XCTestCase {
         let (_, clusters) = clusterize(
             maxDistance: 0.5,
             minClusterCount: 5, // Greater than number of embeddings
+            maxClusterCount: Int.max,
             embeddings: embeddings,
             embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
@@ -1014,12 +1017,188 @@ final class AHCTests: XCTestCase {
         let (_, clusters) = clusterize(
             maxDistance: 2.0, // High threshold - would normally cluster everything
             minClusterCount: 2, // But force at least 2 clusters
+            maxClusterCount: Int.max,
             embeddings: embeddings,
             embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
             minClusterDistances: minDistances
         )
         
         XCTAssertGreaterThanOrEqual(clusters.count, 2)
+    }
+    
+    // MARK: - MaxClusterCount Tests
+    
+    /// Tests clustering with maxClusterCount parameter to ensure maximum cluster limit.
+    /// Verifies that the clustering algorithm stops when the maximum number of clusters is reached,
+    /// preventing under-clustering of embeddings.
+    func testClusterizeWithMaxClusterCount() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1],
+            [0.0, 0.0, 1.0],
+            [0.1, 0.0, 0.9]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5,
+            minClusterCount: 0,
+            maxClusterCount: 2, // Force at most 2 clusters
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        XCTAssertLessThanOrEqual(clusters.count, 2)
+    }
+    
+    /// Tests clustering with maxClusterCount equal to 1.
+    /// Verifies that when maxClusterCount is 1, all embeddings are forced into a single cluster.
+    func testClusterizeWithMaxClusterCountOne() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.1, // Low threshold - would normally keep separate
+            minClusterCount: 0,
+            maxClusterCount: 1, // Force all into one cluster
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        XCTAssertEqual(clusters.count, 1)
+        XCTAssertEqual(clusters[0].embeddingIndices.sorted(), [0, 1, 2])
+    }
+    
+    /// Tests clustering with maxClusterCount greater than number of embeddings.
+    /// Verifies that the algorithm handles the edge case where maxClusterCount
+    /// exceeds the number of available embeddings gracefully.
+    func testClusterizeWithMaxClusterCountGreaterThanEmbeddings() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5,
+            minClusterCount: 0,
+            maxClusterCount: 10, // Greater than number of embeddings
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        // Should not exceed the number of embeddings
+        XCTAssertLessThanOrEqual(clusters.count, embeddings.count)
+    }
+    
+    /// Tests clustering with maxClusterCount and low distance threshold.
+    /// Verifies that the algorithm respects both the distance threshold and
+    /// the maximum cluster count constraint simultaneously.
+    func testClusterizeWithMaxClusterCountAndLowThreshold() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1],
+            [0.0, 0.0, 1.0],
+            [0.1, 0.0, 0.9]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.1, // Low threshold - would normally keep separate
+            minClusterCount: 0,
+            maxClusterCount: 2, // But force at most 2 clusters
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        XCTAssertLessThanOrEqual(clusters.count, 2)
+    }
+    
+    /// Tests clustering with both minClusterCount and maxClusterCount constraints.
+    /// Verifies that the algorithm respects both minimum and maximum cluster count constraints.
+    func testClusterizeWithMinAndMaxClusterCount() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1],
+            [0.0, 0.0, 1.0],
+            [0.1, 0.0, 0.9]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5,
+            minClusterCount: 2, // At least 2 clusters
+            maxClusterCount: 3, // At most 3 clusters
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        XCTAssertGreaterThanOrEqual(clusters.count, 2)
+        XCTAssertLessThanOrEqual(clusters.count, 3)
+    }
+    
+    /// Tests clustering with maxClusterCount equal to Int.max (default behavior).
+    /// Verifies that when maxClusterCount is Int.max, no maximum limit is enforced.
+    func testClusterizeWithMaxClusterCountIntMax() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.1, // Low threshold
+            minClusterCount: 0,
+            maxClusterCount: Int.max, // No maximum limit
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        // Should keep all separate due to low threshold
+        XCTAssertEqual(clusters.count, 3)
+    }
+    
+    /// Tests clustering with maxClusterCount and high distance threshold.
+    /// Verifies that the algorithm stops clustering when maxClusterCount is reached,
+    /// even if distance threshold would allow further clustering.
+    func testClusterizeWithMaxClusterCountAndHighThreshold() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1],
+            [0.0, 0.0, 1.0],
+            [0.1, 0.0, 0.9]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 2.0, // High threshold - would normally cluster everything
+            minClusterCount: 0,
+            maxClusterCount: 2, // But limit to 2 clusters
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        XCTAssertLessThanOrEqual(clusters.count, 2)
     }
     
     // MARK: - Embedding Magnitude Tests
