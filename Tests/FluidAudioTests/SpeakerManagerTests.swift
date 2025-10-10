@@ -867,6 +867,241 @@ final class SpeakerManagerTests: XCTestCase {
             XCTAssertLessThanOrEqual(uniqueSpeakers.count, 5)
         }
     }
+    
+    // MARK: - Enhanced Known Speaker Logic Tests
+    
+    /// Tests the new infinity distance check for known speakers.
+    /// Verifies that the algorithm correctly handles infinity distances
+    /// and breaks early when no valid distances are found.
+    func testAssignSpeakersWithInfinityDistanceCheck() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Initialize with known speakers
+        let knownSpeakers = [
+            Speaker(
+                id: "Alice",
+                name: "Alice",
+                currentEmbedding: createDistinctEmbedding(pattern: 10),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        ]
+        manager.initializeKnownSpeakers(knownSpeakers)
+        
+        // Create embeddings that are very different from known speakers
+        let embeddings = (0..<3).map { createDistinctEmbedding(pattern: $0 + 100) } // Very different patterns
+        let durations = Array(repeating: 2.0 as Float, count: 3)
+        let weights = Array(repeating: 1.0 as Float, count: 3)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 2
+        )
+        
+        XCTAssertEqual(speakers.count, 3)
+        XCTAssertEqual(indices.count, 3)
+        
+        // Should create new speakers since distances are too high
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertGreaterThan(uniqueSpeakers.count, 1) // Should have more than just Alice
+    }
+    
+    /// Tests the special case logic for maxSpeakerCount and cluster count equality.
+    /// Verifies that the algorithm is more permissive when speakers.count == maxSpeakerCount
+    /// and clusters.count == maxSpeakerCount.
+    func testAssignSpeakersWithSpecialCaseLogic() {
+        let manager = SpeakerManager(speakerThreshold: 0.3) // Lower threshold for testing
+        
+        // Initialize with known speakers
+        let knownSpeakers = [
+            Speaker(
+                id: "Alice",
+                name: "Alice",
+                currentEmbedding: createDistinctEmbedding(pattern: 10),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+            Speaker(
+                id: "Bob",
+                name: "Bob",
+                currentEmbedding: createDistinctEmbedding(pattern: 20),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        ]
+        manager.initializeKnownSpeakers(knownSpeakers)
+        
+        // Create embeddings that are somewhat similar to known speakers
+        let embeddings = [
+            createDistinctEmbedding(pattern: 10), // Similar to Alice
+            createDistinctEmbedding(pattern: 20), // Similar to Bob
+            createDistinctEmbedding(pattern: 11), // Somewhat similar to Alice
+            createDistinctEmbedding(pattern: 21)  // Somewhat similar to Bob
+        ]
+        let durations = Array(repeating: 2.0 as Float, count: 4)
+        let weights = Array(repeating: 1.0 as Float, count: 4)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 2 // Should trigger special case logic
+        )
+        
+        XCTAssertEqual(speakers.count, 4)
+        XCTAssertEqual(indices.count, 4)
+        
+        // Should assign to known speakers due to special case logic
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 2)
+    }
+    
+    /// Tests the modified threshold behavior for known speakers.
+    /// Verifies that the algorithm is more permissive under certain conditions
+    /// even when distances exceed the normal threshold.
+    func testAssignSpeakersWithModifiedThresholdBehavior() {
+        let manager = SpeakerManager(speakerThreshold: 0.2) // Very low threshold
+        
+        // Initialize with known speakers
+        let knownSpeakers = [
+            Speaker(
+                id: "Alice",
+                name: "Alice",
+                currentEmbedding: createDistinctEmbedding(pattern: 10),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        ]
+        manager.initializeKnownSpeakers(knownSpeakers)
+        
+        // Create embeddings that are moderately similar to known speakers
+        let embeddings = [
+            createDistinctEmbedding(pattern: 10), // Exact match
+            createDistinctEmbedding(pattern: 11), // Similar
+            createDistinctEmbedding(pattern: 12)  // Somewhat similar
+        ]
+        let durations = Array(repeating: 2.0 as Float, count: 3)
+        let weights = Array(repeating: 1.0 as Float, count: 3)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 1 // Force all to one speaker
+        )
+        
+        XCTAssertEqual(speakers.count, 3)
+        XCTAssertEqual(indices.count, 3)
+        
+        // Should assign all to Alice due to modified threshold behavior
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertEqual(uniqueSpeakers.count, 1)
+        XCTAssertTrue(uniqueSpeakers.contains("Alice"))
+    }
+    
+    /// Tests the interaction between known speakers and the new maturity-based clustering.
+    /// Verifies that known speakers work correctly with the sophisticated clustering logic.
+    func testAssignSpeakersWithKnownSpeakersAndMaturityLogic() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Initialize with multiple known speakers
+        let knownSpeakers = [
+            Speaker(
+                id: "Alice",
+                name: "Alice",
+                currentEmbedding: createDistinctEmbedding(pattern: 10),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+            Speaker(
+                id: "Bob",
+                name: "Bob",
+                currentEmbedding: createDistinctEmbedding(pattern: 20),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        ]
+        manager.initializeKnownSpeakers(knownSpeakers)
+        
+        // Create embeddings that will form mature clusters
+        let embeddings = (0..<10).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 10)
+        let weights = Array(repeating: 1.0 as Float, count: 10)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 3 // Allow 3 total speakers (2 known + 1 new)
+        )
+        
+        XCTAssertEqual(speakers.count, 10)
+        XCTAssertEqual(indices.count, 10)
+        
+        // Should have at most 3 unique speakers
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 3)
+        
+        // Verify all embeddings are assigned to speakers
+        XCTAssertTrue(speakers.allSatisfy { $0 != nil })
+    }
+    
+    /// Tests the edge case where maxSpeakerCount equals the number of known speakers.
+    /// Verifies that the algorithm handles this case correctly with the new logic.
+    func testAssignSpeakersWithMaxSpeakerCountEqualToKnownSpeakers() {
+        let manager = SpeakerManager(speakerThreshold: 0.5)
+        
+        // Initialize with 2 known speakers
+        let knownSpeakers = [
+            Speaker(
+                id: "Alice",
+                name: "Alice",
+                currentEmbedding: createDistinctEmbedding(pattern: 10),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+            Speaker(
+                id: "Bob",
+                name: "Bob",
+                currentEmbedding: createDistinctEmbedding(pattern: 20),
+                duration: 0,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        ]
+        manager.initializeKnownSpeakers(knownSpeakers)
+        
+        // Create new embeddings
+        let embeddings = (0..<5).map { createDistinctEmbedding(pattern: $0) }
+        let durations = Array(repeating: 2.0 as Float, count: 5)
+        let weights = Array(repeating: 1.0 as Float, count: 5)
+        
+        let (speakers, indices) = manager.assignSpeakers(
+            embeddings: embeddings,
+            durations: durations,
+            embeddingWeights: weights,
+            maxSpeakerCount: 2 // Equal to number of known speakers
+        )
+        
+        XCTAssertEqual(speakers.count, 5)
+        XCTAssertEqual(indices.count, 5)
+        
+        // Should have at most 2 unique speakers (the known ones)
+        let uniqueSpeakers = Set(speakers.compactMap { $0?.id })
+        XCTAssertLessThanOrEqual(uniqueSpeakers.count, 2)
+        
+        // Should assign to known speakers
+        XCTAssertTrue(uniqueSpeakers.contains("Alice") || uniqueSpeakers.contains("Bob"))
+    }
 
     // MARK: - Edge Cases
 

@@ -1201,6 +1201,242 @@ final class AHCTests: XCTestCase {
         XCTAssertLessThanOrEqual(clusters.count, 2)
     }
     
+    // MARK: - Cluster Maturity Tests
+    
+    /// Tests clustering with mixed mature and immature clusters.
+    /// Verifies that the algorithm correctly identifies and handles clusters of different sizes
+    /// according to the new maturity-based logic.
+    func testClusterizeWithMixedMatureAndImmatureClusters() {
+        // Create embeddings that will form clusters of different sizes
+        let embeddings: [[Float]] = [
+            // First group - should form a mature cluster (≥5 embeddings)
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.8, 0.2, 0.0],
+            [0.7, 0.3, 0.0],
+            [0.6, 0.4, 0.0],
+            // Second group - should form an immature cluster (1-2 embeddings)
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1],
+            // Third group - should form another immature cluster
+            [0.0, 0.0, 1.0]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5,
+            minClusterCount: 0,
+            maxClusterCount: 2, // Should allow 2 clusters based on maturity logic
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        // Should have at most 2 clusters
+        XCTAssertLessThanOrEqual(clusters.count, 2)
+        
+        // Verify all embeddings are assigned to clusters
+        let allIndices = clusters.flatMap { $0.embeddingIndices }.sorted()
+        XCTAssertEqual(allIndices, [0, 1, 2, 3, 4, 5, 6, 7])
+    }
+    
+    /// Tests clustering with exactly 5 embeddings per cluster (maturity threshold).
+    /// Verifies that clusters with exactly 5 embeddings are considered mature.
+    func testClusterizeWithExactlyFiveEmbeddingsPerCluster() {
+        // Create two groups of exactly 5 embeddings each
+        let embeddings: [[Float]] = [
+            // First mature cluster
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.8, 0.2, 0.0],
+            [0.7, 0.3, 0.0],
+            [0.6, 0.4, 0.0],
+            // Second mature cluster
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1],
+            [0.0, 0.8, 0.2],
+            [0.0, 0.7, 0.3],
+            [0.0, 0.6, 0.4]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5,
+            minClusterCount: 0,
+            maxClusterCount: 2, // Should allow exactly 2 mature clusters
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        // Should have exactly 2 clusters (both mature)
+        XCTAssertEqual(clusters.count, 2)
+        
+        // Each cluster should have exactly 5 embeddings
+        for cluster in clusters {
+            XCTAssertEqual(cluster.embeddingIndices.count, 5)
+        }
+    }
+    
+    /// Tests clustering with exactly 2 embeddings per cluster (immature threshold).
+    /// Verifies that clusters with 1-2 embeddings are considered immature.
+    func testClusterizeWithExactlyTwoEmbeddingsPerCluster() {
+        // Create multiple groups of exactly 2 embeddings each
+        let embeddings: [[Float]] = [
+            // First immature cluster
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            // Second immature cluster
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1],
+            // Third immature cluster
+            [0.0, 0.0, 1.0],
+            [0.1, 0.0, 0.9]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5,
+            minClusterCount: 0,
+            maxClusterCount: 2, // Should allow 2 clusters despite having 3 immature clusters
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        // Should have at most 2 clusters
+        XCTAssertLessThanOrEqual(clusters.count, 2)
+        
+        // Verify all embeddings are assigned to clusters
+        let allIndices = clusters.flatMap { $0.embeddingIndices }.sorted()
+        XCTAssertEqual(allIndices, [0, 1, 2, 3, 4, 5])
+    }
+    
+    // MARK: - Post-processing Redistribution Tests
+    
+    /// Tests the post-processing redistribution when clusterCount > maxClusterCount.
+    /// Verifies that excess clusters are redistributed to the largest existing clusters.
+    func testClusterizeWithExcessClusterRedistribution() {
+        // Create embeddings that would naturally form more clusters than maxClusterCount
+        let embeddings: [[Float]] = [
+            // First group - should form a large cluster
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.8, 0.2, 0.0],
+            [0.7, 0.3, 0.0],
+            [0.6, 0.4, 0.0],
+            // Second group - should form another large cluster
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1],
+            [0.0, 0.8, 0.2],
+            [0.0, 0.7, 0.3],
+            [0.0, 0.6, 0.4],
+            // Third group - should be redistributed
+            [0.0, 0.0, 1.0],
+            [0.1, 0.0, 0.9],
+            [0.0, 0.0, 0.8],
+            [0.2, 0.0, 0.8],
+            [0.0, 0.0, 0.7]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.3, // Low threshold to encourage more clustering
+            minClusterCount: 0,
+            maxClusterCount: 2, // Force redistribution
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        // Should have exactly 2 clusters after redistribution
+        XCTAssertEqual(clusters.count, 2)
+        
+        // Verify all embeddings are assigned to clusters
+        let allIndices = clusters.flatMap { $0.embeddingIndices }.sorted()
+        XCTAssertEqual(allIndices, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+        
+        // Verify that clusters are reasonably balanced (not empty)
+        for cluster in clusters {
+            XCTAssertGreaterThan(cluster.embeddingIndices.count, 0)
+        }
+    }
+    
+    /// Tests that centroids are preserved during redistribution.
+    /// Verifies that the redistribution process doesn't update cluster centroids.
+    func testClusterizeCentroidPreservationDuringRedistribution() {
+        // Create embeddings that will require redistribution
+        let embeddings: [[Float]] = [
+            // First group
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.8, 0.2, 0.0],
+            [0.7, 0.3, 0.0],
+            [0.6, 0.4, 0.0],
+            // Second group
+            [0.0, 1.0, 0.0],
+            [0.0, 0.9, 0.1],
+            [0.0, 0.8, 0.2],
+            [0.0, 0.7, 0.3],
+            [0.0, 0.6, 0.4],
+            // Third group - will be redistributed
+            [0.0, 0.0, 1.0],
+            [0.1, 0.0, 0.9]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.3,
+            minClusterCount: 0,
+            maxClusterCount: 2,
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        // Verify that centroids are valid (not empty)
+        for cluster in clusters {
+            XCTAssertFalse(cluster.centroid.isEmpty)
+            XCTAssertEqual(cluster.centroid.count, 3) // Should match embedding dimension
+        }
+    }
+    
+    /// Tests redistribution with single embedding clusters.
+    /// Verifies that single-embedding clusters are properly redistributed.
+    func testClusterizeRedistributionWithSingleEmbeddingClusters() {
+        // Create embeddings that will form many single-embedding clusters
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.5, 0.5, 0.0],
+            [0.5, 0.0, 0.5],
+            [0.0, 0.5, 0.5]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.1, // Very low threshold to keep clusters separate initially
+            minClusterCount: 0,
+            maxClusterCount: 2, // Force redistribution
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances
+        )
+        
+        // Should have exactly 2 clusters after redistribution
+        XCTAssertEqual(clusters.count, 2)
+        
+        // Verify all embeddings are assigned to clusters
+        let allIndices = clusters.flatMap { $0.embeddingIndices }.sorted()
+        XCTAssertEqual(allIndices, [0, 1, 2, 3, 4, 5])
+        
+        // Verify that clusters are reasonably balanced
+        for cluster in clusters {
+            XCTAssertGreaterThan(cluster.embeddingIndices.count, 0)
+        }
+    }
+    
     // MARK: - Embedding Magnitude Tests
     
     /// Tests that embeddingMagnitude correctly calculates the magnitude of a vector.

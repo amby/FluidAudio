@@ -133,7 +133,8 @@ public class SpeakerManager {
 //                print("MIN CLUSTER DISTANCES: \(embeddings.count) \(minClusterDistances)")
 //                print("EMBEDDING WEIGHT:", embeddingWeights)
 //                print("EMBEDDING MAGNITUDES", embeddings.map { embeddingMagnitude($0) })
-//                print("CLUSTERS: \(clusters.map { $0.embeddingIndices } )")
+//                print("SPEAKER COUNT: \(speakerDatabase.values.count { $0.clusterized })")
+//                print("CLUSTERS: \(clusters.count) \(clusters.map { $0.embeddingIndices } )")
                 self.minClusterDistances = minClusterDistances
                 
                 let validNewEmbeddingsStartIndex = embeddings.count - validEmbeddingIndices.count
@@ -160,9 +161,11 @@ public class SpeakerManager {
                 var tmpClusters = clusters
                 while true {
                     let (uIntMinIndex, minDistance) = vDSP.indexOfMinimum(minDistanceToClusters.distances)
-                    // FIXME: For initially known speakers we may need to use a smaller threshold
-                    // to avoid matching them with someone else.
-                    if minDistance >= speakerThreshold {
+                    if minDistance == .infinity {
+                        break
+                    }
+                    if minDistance >= speakerThreshold && !(speakers.count == maxSpeakerCount &&
+                                                            clusters.count == maxSpeakerCount) {
                         break
                     }
                     let minIndex = Int(uIntMinIndex)

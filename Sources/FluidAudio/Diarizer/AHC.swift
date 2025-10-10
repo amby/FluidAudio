@@ -166,7 +166,7 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
         let (uIntMinIndex, minDistance) = vDSP.indexOfMinimum(minClusterDistances.distances)
 //        print("SEG", uIntMinIndex, minDistance, maxDistance, minClusterDistances, clusters)
 //        print("MIN DISTANCE: \(minDistance), \(minClusterDistances.distances), \(sums), \(centroids), \(clusters)")
-        if minDistance >= maxDistance && clusterCount <= maxClusterCount {
+        if minDistance >= maxDistance {
             // Clusterization is complete.
 //            print("SEG CHECK", updateClusterDistances(
 //                embeddings: centroids,
@@ -206,10 +206,17 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
             // The requested minimum number of clusters is reached.
             break
         }
-
-        if minDistance >= maxDistance && clusterCount <= maxClusterCount {
-            // Requested maximum number of clusters is reached.
-            break
+        
+        if maxClusterCount < clusters.count {
+            let matureClusterCount = clusters.filter { $0.count >= 5 }.count
+            let immatureClusterCount = clusters.filter { $0.count > 0 && $0.count <= 2 }.count
+//            print("MAX CHECK", matureClusterCount, immatureClusterCount, clusterCount)
+            if matureClusterCount >= maxClusterCount &&
+                maxClusterCount >= immatureClusterCount &&
+                matureClusterCount + immatureClusterCount == clusterCount {
+                // The requested maximum number of clusters is reached.
+                break
+            }
         }
 
 //        minClusterDistances.distances[otherIndex] = Float.nan
@@ -221,6 +228,41 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
                                                      removedEmbeddingIndices: [otherIndex])
     }
 
+    if clusterCount > maxClusterCount {
+//        print("EXTRA BEFORE", maxClusterCount, clusterCount, clusters)
+        // We's got more clusters that we wanted. Let's distribute remaining embeddigs between
+        // clusters having the most of embeddings included already. But we shouldn't update the
+        // clusters centroids since we don't want the remaning embeddings to affect result of
+        // clusterization so far.
+
+        let clusterIndices = clusters
+            .enumerated()
+            .filter { !$0.element.isEmpty }
+            .map { $0.offset }
+            .sorted { clusters[$0].count > clusters[$1].count }
+        
+//        print("CLUSTER INDICES", clusterIndices)
+        
+        for extraClusterIndex in clusterIndices[maxClusterCount...] {
+            for extraEmbeddingIndex in clusters[extraClusterIndex] {
+                let extraEmbedding = embeddings[extraEmbeddingIndex]
+                var minDistance = Float.infinity
+                var minDistanceIndex = -1
+                for clusterIndex in clusterIndices[..<maxClusterCount] {
+                    let distance = cosineDist(extraEmbedding, centroids[clusterIndex])
+                    if distance < minDistance {
+                        minDistance = distance
+                        minDistanceIndex = clusterIndex
+                    }
+                }
+                clusters[minDistanceIndex].append(extraEmbeddingIndex)
+            }
+            clusters[extraClusterIndex] = []
+            clusterCount -= 1
+        }
+//        print("EXTRA AFTER", maxClusterCount, clusterCount, clusters)
+    }
+    
     return (
         resultMinClusterDistances,
         clusters
