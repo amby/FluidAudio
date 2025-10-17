@@ -204,4 +204,68 @@ final class StreamingAsrManagerTests: XCTestCase {
         // The actual functionality would be tested in integration tests with real models
         XCTAssertTrue(true, "Finish method signature is correct")
     }
+    
+    // MARK: - Token Processing Tests
+    
+    /// Tests the startsWithWhitespaceAndUppercase function for token deduplication.
+    /// Verifies that the function correctly identifies strings that start with
+    /// whitespace followed by an uppercase letter, which is used in the improved
+    /// token deduplication logic.
+    func testStartsWithWhitespaceAndUppercaseFunction() async {
+        let manager = StreamingAsrManager(config: .default)
+        
+        // Test valid cases
+        let result1 = await manager.startsWithWhitespaceAndUppercase(" Hello")
+        XCTAssertTrue(result1)
+        
+        let result2 = await manager.startsWithWhitespaceAndUppercase("\tWorld")
+        XCTAssertTrue(result2)
+        
+        let result3 = await manager.startsWithWhitespaceAndUppercase("\nTest")
+        XCTAssertTrue(result3)
+        
+        let result4 = await manager.startsWithWhitespaceAndUppercase(" A")
+        XCTAssertTrue(result4)
+        
+        let result5 = await manager.startsWithWhitespaceAndUppercase(" Z")
+        XCTAssertTrue(result5)
+        
+        // Test invalid cases
+        let result6 = await manager.startsWithWhitespaceAndUppercase("Hello")
+        XCTAssertFalse(result6)
+        
+        let result7 = await manager.startsWithWhitespaceAndUppercase("hello")
+        XCTAssertFalse(result7)
+        
+        let result8 = await manager.startsWithWhitespaceAndUppercase("")
+        XCTAssertFalse(result8)
+        
+        let result9 = await manager.startsWithWhitespaceAndUppercase(" ")
+        XCTAssertFalse(result9)
+        
+        let result10 = await manager.startsWithWhitespaceAndUppercase("A")
+        XCTAssertFalse(result10)
+        
+        let result11 = await manager.startsWithWhitespaceAndUppercase(" a")
+        XCTAssertFalse(result11)
+        
+        let result12 = await manager.startsWithWhitespaceAndUppercase(" 1")
+        XCTAssertFalse(result12)
+        
+        let result13 = await manager.startsWithWhitespaceAndUppercase(" !")
+        XCTAssertFalse(result13)
+        
+        let result14 = await manager.startsWithWhitespaceAndUppercase("Hello World")
+        XCTAssertFalse(result14)
+        
+        // Test edge cases
+        let result15 = await manager.startsWithWhitespaceAndUppercase("")
+        XCTAssertFalse(result15)
+        
+        let result16 = await manager.startsWithWhitespaceAndUppercase(" ")
+        XCTAssertFalse(result16)
+        
+        let result17 = await manager.startsWithWhitespaceAndUppercase("A")
+        XCTAssertFalse(result17)
+    }
 }

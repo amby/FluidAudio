@@ -341,7 +341,7 @@ public actor StreamingAsrManager {
             let windowFrameOffset = Int(windowTimeOffset / 0.08)  // Convert seconds to frames
             let absoluteTimestamps = timestamps.map { $0 + windowFrameOffset }
 
-//            print("BEFORE:", Array(accumulatedTokenTimings.suffix(10)), "\n=====\n",
+//            print(">>>BEFORE:", Array(accumulatedTokenTimings.suffix(10)), "\n=====\n",
 //                  tokens.map { asrManager.vocabulary[$0]! },
 //                  absoluteTimestamps.map { Double($0) * 0.08 },
 //                  timestamps.map { Double($0) * 0.08 },
@@ -364,7 +364,7 @@ public actor StreamingAsrManager {
                 accumulatedTokenTimings.removeLast(removedFromAccumulated)
             }
 
-//            print("AFTER:", Array(accumulatedTokenTimings.suffix(10)), "\n=====\n",
+//            print(">>>AFTER:", Array(accumulatedTokenTimings.suffix(10)), "\n===== \(removedFromAccumulated)\n",
 //                  dedupedTokens.map { asrManager.vocabulary[$0]! }, dedupedTimestamps.map { Double($0) * 0.08 })
 
             // Convert only the current chunk tokens to text for clean incremental updates
@@ -618,35 +618,69 @@ public actor StreamingAsrManager {
 //        
 //        let separationTime = (accumulatedTokenTimings.last!.endTime + Double(firstTimestamp) * 0.08) * 0.5
 
-        var separationTime = currentChunkStartTime + config.leftContextSeconds + config.rightContextSeconds / 2
-
-        var separationFrame = Int(round(separationTime / 0.08))
+        var separationTime = currentChunkStartTime + config.leftContextSeconds / 2
+//        var earlySeparationTime = separationTime
         
-//        print("SEPARATION TIME", Double(separationTime), separationFrame)
+        // We need to keep tokens which only found in the new chunk, but missing from previous.
+        let lastAccumulatedTokenEndTime = accumulatedTokenTimings.last!.endTime
+        separationTime = min(
+            separationTime + config.leftContextSeconds / 2 + config.rightContextSeconds / 2,
+            lastAccumulatedTokenEndTime)
+//        if separationTime <= lastAccumulatedTokenEndTime {
+//            separationTime += config.leftContextSeconds / 2
+////            earlySeparationTime = separationTime
+//            if separationTime <= lastAccumulatedTokenEndTime {
+//                separationTime += config.rightContextSeconds / 2
+//            }
+//        }
+
+        let separationFrame = Int(round(separationTime / 0.08))
+//        let earlySeparationFrame = Int(round(earlySeparationTime / 0.08))
+        
+//        print("<><><>SEPARATION TIME", Double(separationTime), separationFrame, currentChunkStartTime)
 
         // Keep tokens from new chunk that are at or after the separation point
-        var keptTokens: [Int] = []
-        var keptTimestamps: [Int] = []
-        var keptConfidences: [Float] = []
         
+        var firstValidTokenIndex: Int = tokens.count
         for i in 0..<tokens.count {
+            // Skip first token if it's punctuation.
+            if i == 0 && punctuationTokens.contains(tokens[i]) {
+                continue
+            }
+            
             let tokenTimestamp = timestamps[i]
+//            let token = asrManager!.vocabulary[tokens[i]]!
             if tokenTimestamp >= separationFrame {
+//            if tokenTimestamp >= separationFrame || (tokenTimestamp >= earlySeparationFrame &&
+//                                                     startsWithWhitespaceAndUppercase(token)) {
+                // Stop on first token which is on or after separation time, or if a capital letter
+                // is encountered (assuming the model is confident enough here).
+                firstValidTokenIndex = i
+                break
 //            let tokenTimestamp = Double(timestamps[i]) * 0.08
 //            if tokenTimestamp > separationTime {
-                keptTokens.append(tokens[i])
-                keptTimestamps.append(timestamps[i])
-                keptConfidences.append(confidences[i])
+                
+//                keptTokens.append(tokens[i])
+//                keptTimestamps.append(timestamps[i])
+//                keptConfidences.append(confidences[i])
             }
         }
+        
+        var keptTokens: [Int] = Array(tokens[firstValidTokenIndex...])
+        var keptTimestamps: [Int] = Array(timestamps[firstValidTokenIndex...])
+        var keptConfidences: [Float] = Array(confidences[firstValidTokenIndex...])
         
         guard !keptTokens.isEmpty else {
             return (keptTokens, keptTimestamps, keptConfidences, 0)
         }
-        
-        separationTime = Double(keptTimestamps[0]) * 0.08
-        separationFrame = Int(round(separationTime / 0.08))
 
+//        // Move separation time to the beginnig of the first kept token.
+//        separationTime = Double(keptTimestamps[0]) * 0.08
+//        separationFrame = Int(round(separationTime / 0.08))
+
+        let firstKeptTokenTime = Double(keptTimestamps[0]) * 0.08
+        let firstKeptTokenFrame = Int(round(firstKeptTokenTime / 0.08))
+        
 //        print("SEPARATION TIME (2)", Double(separationTime), separationFrame)
 
         // Remove tokens from accumulated that are after the separation point
@@ -654,6 +688,21 @@ public actor StreamingAsrManager {
         var removedFromAccumulated = 0
         for i in (0..<accumulatedTokenTimings.count).reversed() {
             let tokenStartFrame = Int(round(accumulatedTokenTimings[i].startTime / 0.08))
+//            if i > 0 {
+//                // Remove the token if previous one has the same start time. Bug?
+//                let prvTokenStartFrame = Int(round(accumulatedTokenTimings[i - 1].startTime / 0.08))
+//                if prvTokenStartFrame == tokenStartFrame {
+//                    removedFromAccumulated += 1
+//                    continue
+//                }
+//            }
+            if tokenStartFrame > firstKeptTokenFrame {
+                removedFromAccumulated += 1
+                continue
+            } else if punctuationTokens.contains(accumulatedTokenTimings[i].tokenId) {
+                // If punctuation is found just before the kept tokens, stop removing accumulated tokens.
+                break
+            }
             if tokenStartFrame > separationFrame {
 //            let tokenStartTime = accumulatedTokenTimings[i].startTime
 //            if tokenStartTime > separationTime {
@@ -678,24 +727,54 @@ public actor StreamingAsrManager {
                 let lastAccumulatedTokenStartFrame = Int(round(lastAccumulatedTokenTiming.startTime / 0.08))
                 let lastAccumulatedTokenEndFrame = Int(round(lastAccumulatedTokenTiming.endTime / 0.08))
                 let firstNewTokenTimestamp = keptTimestamps[0]
-                
+                let firstKeptToken = asrManager!.vocabulary[keptTokens[0]]!
+
                 if firstNewTokenTimestamp >= lastAccumulatedTokenStartFrame &&
                     firstNewTokenTimestamp <= lastAccumulatedTokenEndFrame {
+                    // Last accumulated token and first new token intersects.
+//                    print("INTERSECTING TOKENS", lastAccumulatedTokenTiming.token, firstKeptToken)
                     if lastAccumulatedTokenTiming.tokenId == keptTokens[0] {
                         // Same token at boundary - remove the duplicate from new tokens
                         keptTokens.removeFirst()
                         keptTimestamps.removeFirst()
                         keptConfidences.removeFirst()
+                    } else if firstKeptToken.lowercased() == lastAccumulatedTokenTiming.token.lowercased() {
+                        // We have the same token at the boundary, but in different case. Remove
+                        // duplicate from new tokens.
+                        keptTokens.removeFirst()
+                        keptTimestamps.removeFirst()
+                        keptConfidences.removeFirst()
+                    } else if startsWithWhitespaceAndUppercase(lastAccumulatedTokenTiming.token) &&
+                                startsWithWhitespaceAndUppercase(firstKeptToken) {
+                        // We have two "space + capital letter" at the boundary. Most likely it's a
+                        // misinterpreted beginning of a sentence. Keep new one.
+                        // FIXME: It may cause small issues in the middle of a sentence with proper names.
+                        removedFromAccumulated += 1
                     } else if keptTokens.count > 1 && removedFromAccumulated < accumulatedTokenTimings.count - 1 {
                         // We have at least two tokens on both side.
                         let preLastAccumulatedTokenTiming = accumulatedTokenTimings[lastAccumulatedIndex - 1]
-                        if keptTokens[1] == lastAccumulatedTokenTiming.tokenId &&
-                            keptTokens[0] == preLastAccumulatedTokenTiming.tokenId {
+                        let secondKeptToken = asrManager!.vocabulary[keptTokens[1]]!
+//                        if keptTokens[1] == lastAccumulatedTokenTiming.tokenId &&
+//                            keptTokens[0] == preLastAccumulatedTokenTiming.tokenId {
+                        if secondKeptToken.lowercased() == lastAccumulatedTokenTiming.token.lowercased() &&
+                            firstKeptToken.lowercased() == preLastAccumulatedTokenTiming.token.lowercased() {
                             // Two tokens are the same at the boundary. Remove them both.
                             // TODO: Check timings if misfire.
                             keptTokens.removeFirst(2)
                             keptTimestamps.removeFirst(2)
                             keptConfidences.removeFirst(2)
+                        } else if lastAccumulatedTokenTiming.token.lowercased() ==
+                                    (firstKeptToken + secondKeptToken).lowercased() {
+                            // Last accumulated token is the same as the two first accumulated tokens. Remove the new tokens.
+                            keptTokens.removeFirst(2)
+                            keptTimestamps.removeFirst(2)
+                            keptConfidences.removeFirst(2)
+                        } else if (preLastAccumulatedTokenTiming.token + lastAccumulatedTokenTiming.token).lowercased() ==
+                                    firstKeptToken.lowercased() {
+                            // Two last accumulated tokens are the same as the first new one. Remove the new one.
+                            keptTokens.removeFirst(1)
+                            keptTimestamps.removeFirst(1)
+                            keptConfidences.removeFirst(1)
                         } else if firstNewTokenTimestamp == Int(round(preLastAccumulatedTokenTiming.endTime / 0.08)) &&
                                     keptTokens[0] == preLastAccumulatedTokenTiming.tokenId {
                             // Most likely we have a mistakenly recognized token at the end of accumulated
@@ -740,6 +819,15 @@ public actor StreamingAsrManager {
         }
                 
         return (keptTokens, keptTimestamps, keptConfidences, removedFromAccumulated)
+    }
+    
+    // Checks if given string contains whitespace as the first character and an uppercase letter as
+    // the second.
+    func startsWithWhitespaceAndUppercase(_ s: String) -> Bool {
+        guard s.count >= 2 else {
+            return false
+        }
+        return s.first!.isWhitespace && s[s.index(s.startIndex, offsetBy: 1)].isUppercase
     }
 }
 
