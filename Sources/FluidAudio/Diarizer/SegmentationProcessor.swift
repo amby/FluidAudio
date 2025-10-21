@@ -25,7 +25,8 @@ public struct SegmentationProcessor {
     public func getSegments(
         audioChunk: ArraySlice<Float>,
         segmentationModel: MLModel,
-        chunkSize: Int = 160_000
+        chunkSize: Int = 160_000,
+        threshold: Float = 0.0
     ) throws -> (segments: [[[Float]]], featureProvider: MLFeatureProvider) {
 
         // Create ANE-aligned audio array
@@ -76,12 +77,12 @@ public struct SegmentationProcessor {
         }
 
         // Process segments with optimized memory access
-        let segments = processSegmentsOptimized(segmentOutput)
+        let segments = processSegmentsOptimized(segmentOutput, threshold: threshold)
 
         return (segments, output)
     }
 
-    private func processSegmentsOptimized(_ segmentOutput: MLMultiArray) -> [[[Float]]] {
+    private func processSegmentsOptimized(_ segmentOutput: MLMultiArray, threshold: Float) -> [[[Float]]] {
         let frames = segmentOutput.shape[1].intValue
         let combinations = segmentOutput.shape[2].intValue
 
@@ -112,13 +113,13 @@ public struct SegmentationProcessor {
         
 //        print("RAW SEGMENTS:")
 //        for frame in segments[0] {
-//            print("[" + frame.map { String(format: "%.5f", $0) }.joined(separator: ", ") + "]")
+//            print("[" + frame.map { String(format: "%.5f", exp($0)) }.joined(separator: ", ") + "]")
 //        }
 
-        return powersetConversionOptimized(segments)
+        return powersetConversionOptimized(segments, threshold: threshold)
     }
 
-    private func powersetConversionOptimized(_ segments: [[[Float]]]) -> [[[Float]]] {
+    private func powersetConversionOptimized(_ segments: [[[Float]]], threshold: Float) -> [[[Float]]] {
         let powerset: [[Int]] = [
             [],
             [0],
@@ -141,9 +142,12 @@ public struct SegmentationProcessor {
 
         guard let binarizedArray = binarizedArray else {
             // Fallback to regular array
-            return powersetConversionFallback(segments)
+            return powersetConversionFallback(segments, threshold: threshold)
         }
 
+        // Convert threshold from [0, 1] to (-inf, 0).
+        let threshold = log(threshold)
+        
         // Direct memory access
         let ptr = binarizedArray.dataPointer.assumingMemoryBound(to: Float.self)
 
@@ -157,6 +161,9 @@ public struct SegmentationProcessor {
                 var maxIndex: vDSP_Length = 0
                 frame.withUnsafeBufferPointer { buffer in
                     vDSP_maxvi(buffer.baseAddress!, 1, &maxValue, &maxIndex, vDSP_Length(frame.count))
+                }
+                if maxValue < threshold {
+                    maxIndex = 0
                 }
 
                 // Set speakers based on powerset
@@ -188,7 +195,7 @@ public struct SegmentationProcessor {
         return result
     }
 
-    private func powersetConversionFallback(_ segments: [[[Float]]]) -> [[[Float]]] {
+    private func powersetConversionFallback(_ segments: [[[Float]]], threshold: Float) -> [[[Float]]] {
         // Original implementation as fallback
         let powerset: [[Int]] = [
             [],
@@ -212,11 +219,15 @@ public struct SegmentationProcessor {
             count: batchSize
         )
 
+        // Convert threshold from [0, 1] to (-inf, 0).
+        let threshold = log(threshold)
+        
         for b in 0..<batchSize {
             for f in 0..<numFrames {
                 let frame = segments[b][f]
 
-                guard let bestIdx = frame.indices.max(by: { frame[$0] < frame[$1] }) else {
+                guard let bestIdx = frame.indices.max(by: { frame[$0] < frame[$1] }),
+                      frame[bestIdx] >= threshold else {
                     continue
                 }
 

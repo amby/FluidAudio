@@ -113,7 +113,7 @@ public final class DiarizerManager {
     /// let result = try diarizer.performCompleteDiarization(audioContiguous)
     /// ```
     public func performCompleteDiarization<C>(
-        _ samples: C, sampleRate: Int = 16000
+        _ samples: C, sampleRate: Int = 16000, segmentationThreshold: Float = 0.0
     ) throws -> DiarizationResult
     where C: RandomAccessCollection, C.Element == Float, C.Index == Int {
         guard let models else {
@@ -148,7 +148,8 @@ public final class DiarizerManager {
                 chunk,
                 chunkOffset: chunkOffset,
                 models: models,
-                sampleRate: sampleRate
+                sampleRate: sampleRate,
+                segmentationThreshold: segmentationThreshold
             )
             allSegments.append(contentsOf: chunkSegments)
 
@@ -207,7 +208,8 @@ public final class DiarizerManager {
         _ chunk: C,
         chunkOffset: Double,
         models: DiarizerModels,
-        sampleRate: Int = 16000
+        sampleRate: Int = 16000,
+        segmentationThreshold: Float = 0.0
     ) throws -> ([TimedSpeakerSegment], ChunkTimings)
     where C: RandomAccessCollection, C.Element == Float, C.Index == Int {
         let segmentationStartTime = Date()
@@ -231,7 +233,8 @@ public final class DiarizerManager {
 
         let (binarizedSegments, _) = try segmentationProcessor.getSegments(
             audioChunk: paddedChunk,
-            segmentationModel: models.segmentationModel
+            segmentationModel: models.segmentationModel,
+            threshold: segmentationThreshold
         )
         
 //        print("BINARIZED SEGMENTS: \(binarizedSegments.count) \(binarizedSegments[0].count) \(binarizedSegments[0][0].count)")
