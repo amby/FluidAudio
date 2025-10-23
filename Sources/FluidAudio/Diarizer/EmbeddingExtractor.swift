@@ -52,7 +52,8 @@ public class EmbeddingExtractor {
     public func getEmbeddings<C>(
         audio: C,
         masks: [[Float]],
-        minActivityThreshold: Float = 10.0
+        minActivityThreshold: Float = 10.0,
+        batchSize: Int = 3
     ) throws -> [[Float]]
     where C: RandomAccessCollection, C.Element == Float, C.Index == Int {
         // We need to return embeddings for ALL speakers, not just active ones
@@ -66,7 +67,18 @@ public class EmbeddingExtractor {
             shape: maskShape,
             dataType: .float32
         )
+        
+        // Use ANE-optimized copy for audio data
+        for i in 0..<min(batchSize, masks.count) {
+            memoryOptimizer.optimizedCopy(
+                from: audio,
+                to: waveformBuffer!,
+                offset: i * audio.count
+            )
+        }
 
+        var speakerIndices: [Int] = []
+        
         // Process all speakers but optimize for active ones
         for speakerIdx in 0..<masks.count {
             // Check if speaker is active
@@ -74,24 +86,33 @@ public class EmbeddingExtractor {
 
             if speakerActivity < minActivityThreshold {
                 // For inactive speakers, return zero embedding
-                embeddings.append([Float](repeating: 0.0, count: 256))
+//                embeddings.append([Float](repeating: 0.0, count: 256))
+//                continue
+                if speakerIdx < masks.count - 1 {
+                    continue
+                }
+            } else {
+                // Optimize mask creation with zero-copy view
+                fillMaskBufferOptimized(
+                    masks: masks,
+                    speakerIndex: speakerIdx,
+                    slotIndex: speakerIndices.count,
+                    buffer: currentMaskBuffer
+                )
+                                
+                speakerIndices.append(speakerIdx)
+            }
+            
+            if speakerIndices.count < batchSize && speakerIdx < masks.count - 1 {
+                // Still need to collect more masks.
                 continue
             }
-
-            // Use ANE-optimized copy for audio data
-            memoryOptimizer.optimizedCopy(
-                from: audio,
-                to: waveformBuffer!,
-                offset: 0  // First speaker slot
-            )
-
-            // Optimize mask creation with zero-copy view
-            fillMaskBufferOptimized(
-                masks: masks,
-                speakerIndex: speakerIdx,
-                buffer: currentMaskBuffer
-            )
-
+            
+            if speakerIndices.isEmpty {
+                // There are no more masks, but nothing is collected.
+                continue
+            }
+            
             // Create zero-copy feature provider
             let featureProvider = ZeroCopyDiarizerFeatureProvider(features: [
                 "waveform": MLFeatureValue(multiArray: waveformBuffer!),
@@ -106,24 +127,39 @@ public class EmbeddingExtractor {
                 currentMaskBuffer.prefetchToNeuralEngine()
             }
 
+//            print("WESPEAKER", speakerIndices.count)
             let output = try wespeakerModel.prediction(from: featureProvider, options: options)
 
-            // Extract embedding with zero-copy
-            if let embeddingArray = output.featureValue(for: "embedding")?.multiArrayValue {
-                let embedding = extractEmbeddingOptimized(
-                    from: embeddingArray,
-                    speakerIndex: 0
-                )
-                embeddings.append(embedding)
-            } else {
-                // Fallback to zero embedding
-                embeddings.append([Float](repeating: 0.0, count: 256))
+            let embeddingArray = output.featureValue(for: "embedding")?.multiArrayValue
+            
+            for i in 0..<speakerIndices.count {
+                while speakerIndices[i] > embeddings.count {
+                    embeddings.append([Float](repeating: 0.0, count: 256))
+                }
+                
+                // Extract embedding with zero-copy
+                if let embeddingArray = embeddingArray {
+                    let embedding = extractEmbeddingOptimized(
+                        from: embeddingArray,
+                        speakerIndex: i
+                    )
+                    embeddings.append(embedding)
+                } else {
+                    // Fallback to zero embedding
+                    embeddings.append([Float](repeating: 0.0, count: 256))
+                }
             }
+            
+            speakerIndices = []
         }
-
+        
+        while embeddings.count < masks.count {
+            embeddings.append([Float](repeating: 0.0, count: 256))
+        }
+        
         return embeddings
     }
-    
+
     /// Extracts speakers embeddings by specifying their normailized intervals of activity.
     public func getEmbeddings<C>(
         audio: C,
@@ -148,16 +184,19 @@ public class EmbeddingExtractor {
     private func fillMaskBufferOptimized(
         masks: [[Float]],
         speakerIndex: Int,
+        slotIndex: Int = 0,
         buffer: MLMultiArray
     ) {
+        let maskCount = masks[speakerIndex].count
         // Clear buffer using vDSP for speed
-        let ptr = buffer.dataPointer.assumingMemoryBound(to: Float.self)
-        let totalElements = buffer.count
-        var zero: Float = 0
-        vDSP_vfill(&zero, ptr, 1, vDSP_Length(totalElements))
+        let ptr = buffer.dataPointer.assumingMemoryBound(to: Float.self).advanced(by: slotIndex * maskCount)
+        if slotIndex == 0 {
+            let totalElements = buffer.count
+            var zero: Float = 0
+            vDSP_vfill(&zero, ptr, 1, vDSP_Length(totalElements))
+        }
 
         // Copy speaker mask to first slot using optimized memory copy
-        let maskCount = masks[speakerIndex].count
         masks[speakerIndex].withUnsafeBufferPointer { maskPtr in
             vDSP_mmov(
                 maskPtr.baseAddress!,
