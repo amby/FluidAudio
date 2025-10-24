@@ -356,6 +356,9 @@ public actor StreamingAsrManager {
                 currentChunkStartTime: windowTimeOffset
             )
             
+            precondition(volatileTokenCount >= removedFromAccumulated, "Number of volatile tokens " +
+                         "(\(volatileTokenCount) is less than number of removed tokens (\(removedFromAccumulated))")
+
             // Remove potentially incorrect tokens from the end of accumulated tokens
 //            let removedText = accumulatedTokenTimings[
 //                accumulatedTokenTimings.count - removedFromAccumulated..<accumulatedTokenTimings.count
@@ -406,7 +409,7 @@ public actor StreamingAsrManager {
             
             // Apply confidence-based confirmation logic (uses configured threshold)
             let (curConfirmedTokenCount, curVolatileTokenCount) = await updateTranscriptionState(
-                with: interim, tailTokenCount: tailTokenCount, removedTokenCount: removedFromAccumulated)
+                with: interim, tailTokenCount: tailTokenCount)
 
             if curConfirmedTokenCount != 0 {
                 let from = accumulatedTokenTimings.count - (curConfirmedTokenCount + curVolatileTokenCount)
@@ -414,7 +417,8 @@ public actor StreamingAsrManager {
                 let confirmedText = accumulatedTokenTimingsToText(from: from, to: to)
                 let tokenTimings = Array(accumulatedTokenTimings[from..<to])
                 
-//                print("CONFIRMED TEXT: \(confirmedText)")
+//                print("CONFIRMED TEXT: all: \(accumulatedTokenTimings.count) from: \(from) " +
+//                      "to: \(to) removed: \(removedFromAccumulated) tail: \(tailTokenCount) \(confirmedText)")
                 
                 let update = StreamingTranscriptionUpdate(
                     text: confirmedText,
@@ -483,8 +487,7 @@ public actor StreamingAsrManager {
 
     /// Update transcription state based on confidence and context duration
     private func updateTranscriptionState(with result: ASRResult,
-                                          tailTokenCount: Int,
-                                          removedTokenCount: Int) async -> (Int, Int) {
+                                          tailTokenCount: Int) async -> (Int, Int) {
         let totalAudioProcessed = Double(bufferStartIndex + sampleBuffer.count) / 16000.0
         let hasMinimumContext = totalAudioProcessed >= config.minContextForConfirmation
         let isHighConfidence = Double(result.confidence) >= config.confirmationThreshold
@@ -493,11 +496,11 @@ public actor StreamingAsrManager {
         // 1. Always show text immediately as volatile for responsiveness
         // 2. Only confirm text when we have both high confidence AND sufficient context
         let shouldConfirm = isHighConfidence && hasMinimumContext
-
+        
         if shouldConfirm {
-            let curConfirmedTokenCount = (result.tokenTimings!.count - tailTokenCount) +
-                (volatileTokenCount - removedTokenCount)
-            confirmedTokenCount += curConfirmedTokenCount
+            let newConfirmedTokenCount = accumulatedTokenTimings.count - tailTokenCount
+            let curConfirmedTokenCount = newConfirmedTokenCount - confirmedTokenCount
+            confirmedTokenCount = newConfirmedTokenCount
             volatileTokenCount = tailTokenCount
             
             logger.debug(
@@ -506,7 +509,7 @@ public actor StreamingAsrManager {
             return (curConfirmedTokenCount, tailTokenCount)
         } else {
             // Only update volatile text (hypothesis)
-            self.volatileTokenCount += result.tokenTimings!.count
+            volatileTokenCount += result.tokenTimings!.count
             let reason =
                 !hasMinimumContext
                 ? "insufficient context (\(String(format: "%.1f", totalAudioProcessed))s)" : "low confidence"
