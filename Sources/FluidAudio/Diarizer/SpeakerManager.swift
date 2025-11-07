@@ -242,6 +242,7 @@ public class SpeakerManager {
                     let minClusterDistances = updateClusterDistances(
                         embeddings: embeddings,
                         clusterDistances: self.minClusterDistances,
+                        cannotLink: [:],
                         removedEmbeddingIndices: Array(orderedRemovedEmbeddingIndices))
 
                     embeddings = embeddings
