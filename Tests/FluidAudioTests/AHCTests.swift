@@ -1839,4 +1839,233 @@ final class AHCTests: XCTestCase {
         XCTAssertEqual(clusters[0].centroid, embedding)
     }
     
+    // MARK: - Must Link Constraint Tests
+    
+    /// Tests clustering with mustLink constraints to force specific embeddings to cluster together.
+    /// Verifies that embeddings in the mustLink dictionary are always merged into the same cluster,
+    /// even if they would normally be kept separate based on distance.
+    func testClusterizeWithMustLinkConstraints() {
+        // Create two very different embeddings that would normally stay separate
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0], // Very different from first
+            [0.0, 0.0, 1.0],
+            [0.1, 0.0, 0.0]  // Similar to first
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        // Force embeddings 0 and 1 to cluster together
+        let mustLink: [Int: Set<Int>] = [0: [1], 1: [0]]
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.1, // Low threshold - would normally keep separate
+            minClusterCount: 0,
+            maxClusterCount: Int.max,
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances,
+            mustLink: mustLink
+        )
+        
+        // Verify that embeddings 0 and 1 are in the same cluster
+        var clusterFor0: Int? = nil
+        var clusterFor1: Int? = nil
+        
+        for (clusterIndex, cluster) in clusters.enumerated() {
+            if cluster.embeddingIndices.contains(0) {
+                clusterFor0 = clusterIndex
+            }
+            if cluster.embeddingIndices.contains(1) {
+                clusterFor1 = clusterIndex
+            }
+        }
+        
+        XCTAssertNotNil(clusterFor0)
+        XCTAssertNotNil(clusterFor1)
+        XCTAssertEqual(clusterFor0, clusterFor1, "Embeddings 0 and 1 should be in the same cluster due to mustLink constraint")
+    }
+    
+    /// Tests clustering with mustLink constraints on multiple embedding pairs.
+    /// Verifies that multiple constraints can be applied simultaneously.
+    func testClusterizeWithMultipleMustLinkConstraints() {
+        // Use distinct embeddings to ensure mustLink constraints are the primary factor
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.5, 0.0, 0.0],  // Different from embedding 2, but mustLink forces clustering
+            [1.0, 1.0, 0.0],
+            [0.0, 0.5, 0.0]   // Different from embedding 4, but mustLink forces clustering
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        // Force multiple pairs to cluster: (0,1), (2,3), (4,5)
+        let mustLink: [Int: Set<Int>] = [
+            0: [1],
+            1: [0],
+            2: [3],
+            3: [2],
+            4: [5],
+            5: [4]
+        ]
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5, // Moderate threshold
+            minClusterCount: 0,
+            maxClusterCount: Int.max,
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances,
+            mustLink: mustLink
+        )
+        
+        // Verify that constrained pairs are in the same clusters
+        var embeddingToCluster: [Int: Int] = [:]
+        for (clusterIndex, cluster) in clusters.enumerated() {
+            for embeddingIndex in cluster.embeddingIndices {
+                embeddingToCluster[embeddingIndex] = clusterIndex
+            }
+        }
+        
+        XCTAssertEqual(embeddingToCluster[0], embeddingToCluster[1], "Embeddings 0 and 1 should be in the same cluster")
+        XCTAssertEqual(embeddingToCluster[2], embeddingToCluster[3], "Embeddings 2 and 3 should be in the same cluster")
+        XCTAssertEqual(embeddingToCluster[4], embeddingToCluster[5], "Embeddings 4 and 5 should be in the same cluster")
+    }
+    
+    /// Tests clustering with mustLink constraints and empty dictionary (default behavior).
+    /// Verifies that when mustLink is empty, clustering behaves normally.
+    func testClusterizeWithEmptyMustLink() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.0, 1.0, 0.0]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5,
+            minClusterCount: 0,
+            maxClusterCount: Int.max,
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances,
+            mustLink: [:] // Empty - should behave normally
+        )
+        
+        // Should cluster based on distance threshold
+        XCTAssertGreaterThanOrEqual(clusters.count, 1)
+        XCTAssertLessThanOrEqual(clusters.count, 3)
+        
+        // Verify all embeddings are assigned
+        let allIndices = clusters.flatMap { $0.embeddingIndices }.sorted()
+        XCTAssertEqual(allIndices, [0, 1, 2])
+    }
+    
+    /// Tests clustering with mustLink constraints that force all embeddings into one cluster.
+    /// Verifies that when all pairs are linked, all embeddings end up in a single cluster.
+    func testClusterizeWithMustLinkForcingAllClustering() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        // Force all pairs to cluster together
+        let mustLink: [Int: Set<Int>] = [
+            0: [1, 2],
+            1: [0, 2],
+            2: [0, 1]
+        ]
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.1, // Low threshold - would normally keep separate
+            minClusterCount: 0,
+            maxClusterCount: Int.max,
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances,
+            mustLink: mustLink
+        )
+        
+        // All embeddings should be in the same cluster
+        XCTAssertEqual(clusters.count, 1)
+        XCTAssertEqual(clusters[0].embeddingIndices.sorted(), [0, 1, 2])
+    }
+    
+    /// Tests clustering with both mustLink and cannotLink constraints.
+    /// Verifies that both constraint types work together correctly.
+    func testClusterizeWithMustLinkAndCannotLink() {
+        // Use embeddings where constraints are the deciding factor
+        // Embeddings 2 and 3 are similar enough to cluster with high threshold, but cannotLink prevents it
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0], // Orthogonal to first, but mustLink forces clustering
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.98]  // Very similar to third (would cluster with high threshold), but cannotLink prevents it
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        // Force 0 and 1 to cluster, prevent 2 and 3 from clustering
+        let mustLink: [Int: Set<Int>] = [0: [1], 1: [0]]
+        let cannotLink: [Int: Set<Int>] = [2: [3], 3: [2]]
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.1, // Low threshold - only mustLink pairs should cluster
+            minClusterCount: 0,
+            maxClusterCount: Int.max,
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances,
+            mustLink: mustLink,
+            cannotLink: cannotLink
+        )
+        
+        // Verify mustLink constraint
+        var clusterFor0: Int? = nil
+        var clusterFor1: Int? = nil
+        var clusterFor2: Int? = nil
+        var clusterFor3: Int? = nil
+        
+        for (clusterIndex, cluster) in clusters.enumerated() {
+            if cluster.embeddingIndices.contains(0) { clusterFor0 = clusterIndex }
+            if cluster.embeddingIndices.contains(1) { clusterFor1 = clusterIndex }
+            if cluster.embeddingIndices.contains(2) { clusterFor2 = clusterIndex }
+            if cluster.embeddingIndices.contains(3) { clusterFor3 = clusterIndex }
+        }
+        
+        // MustLink: 0 and 1 should be together (despite being orthogonal and low threshold)
+        XCTAssertEqual(clusterFor0, clusterFor1, "Embeddings 0 and 1 should be in the same cluster due to mustLink")
+        
+        // CannotLink: 2 and 3 should be separate (even though they're very similar)
+        XCTAssertNotEqual(clusterFor2, clusterFor3, "Embeddings 2 and 3 should be in different clusters due to cannotLink")
+    }
+    
+    /// Tests that mustLink constraints take precedence over distance threshold.
+    /// Verifies that mustLink forces clustering even when distance would prevent it.
+    func testClusterizeMustLinkTakesPrecedenceOverDistance() {
+        let embeddings: [[Float]] = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0] // Orthogonal - maximum distance
+        ]
+        let minDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
+        
+        // Force them to cluster despite maximum distance
+        let mustLink: [Int: Set<Int>] = [0: [1], 1: [0]]
+        
+        let (_, clusters) = clusterize(
+            maxDistance: 0.5, // Low threshold - would normally keep separate
+            minClusterCount: 0,
+            maxClusterCount: Int.max,
+            embeddings: embeddings,
+            embeddingWeights: Array(repeating: 1.0, count: embeddings.count),
+            minClusterDistances: minDistances,
+            mustLink: mustLink
+        )
+        
+        // Should cluster together despite distance
+        XCTAssertEqual(clusters.count, 1)
+        XCTAssertEqual(clusters[0].embeddingIndices.sorted(), [0, 1])
+    }
+    
 }

@@ -333,6 +333,7 @@ public final class DiarizerManager {
             embeddings: validEmbeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:])
         for (i, speaker) in speakers.enumerated() {
             guard let speaker else {

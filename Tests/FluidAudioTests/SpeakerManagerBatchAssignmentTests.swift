@@ -45,6 +45,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: [],
             durations: [],
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -67,6 +68,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -96,6 +98,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -125,6 +128,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -158,6 +162,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -199,6 +204,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -228,6 +234,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -251,6 +258,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -273,6 +281,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -302,6 +311,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -336,7 +346,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
                 embeddings: embeddings,
                 durations: durations,
                 embeddingWeights: embeddingWeights,
-                cannotLink: [:]
+                mustLink: [:],
+            cannotLink: [:]
             )
             XCTAssertEqual(speakers.count, 100)
             XCTAssertEqual(indices.count, 100)
@@ -365,6 +376,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -391,6 +403,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -416,6 +429,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -449,6 +463,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -492,6 +507,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: embeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -536,6 +552,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings1,
             durations: durations1,
             embeddingWeights: embeddingWeights1,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -549,6 +566,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: embeddings2,
             durations: durations2,
             embeddingWeights: embeddingWeights2,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -576,6 +594,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: invalidEmbeddings,
             durations: invalidDurations,
             embeddingWeights: invalidEmbeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         
@@ -599,6 +618,7 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             embeddings: mixedEmbeddings,
             durations: mixedDurations,
             embeddingWeights: mixedEmbeddingWeights,
+            mustLink: [:],
             cannotLink: [:]
         )
         

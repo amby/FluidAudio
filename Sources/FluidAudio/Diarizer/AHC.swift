@@ -33,7 +33,13 @@ public func cosineDist(_ a: [Float], _ b: [Float]) -> Float {
 }
 
 // Computes cosine distance using given constraints.
-func constrainedCosineDist(_ a: [Float], _ b: [Float], _ ai: Int, _ bi: Int, _ cannotLink: [Int: Set<Int>]) -> Float {
+func constrainedCosineDist(_ a: [Float], _ b: [Float], _ ai: Int, _ bi: Int,
+                           mustLink: [Int: Set<Int>], cannotLink: [Int: Set<Int>]) -> Float {
+    if let otherIndices = mustLink[ai], otherIndices.contains(bi) {
+        // Treat embeddings which must be in the same cluster as having zero distance.
+        return 0
+    }
+    
     if let otherIndices = cannotLink[ai], otherIndices.contains(bi) {
         // Treat embeddings which can't be in the same cluster as having infinite distance.
         return .infinity
@@ -158,6 +164,7 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
                        embeddings: [[Float]],
                        embeddingWeights: [Float], 
                        minClusterDistances: ClusterDistances,
+                       mustLink: [Int: Set<Int>] = [:],
                        cannotLink: [Int: Set<Int>] = [:]) -> (ClusterDistances, [Cluster]) {
     guard !embeddings.isEmpty else {
         return (minClusterDistances, [])
@@ -172,6 +179,7 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
     
     let resultMinClusterDistances = updateClusterDistances(embeddings: embeddings,
                                                            clusterDistances: minClusterDistances,
+                                                           mustLink: mustLink,
                                                            cannotLink: cannotLink)
     
     var minClusterDistances = resultMinClusterDistances
@@ -237,6 +245,7 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
         
         minClusterDistances = updateClusterDistances(embeddings: centroids,
                                                      clusterDistances: minClusterDistances,
+                                                     mustLink: mustLink,
                                                      cannotLink: cannotLink,
                                                      updatedEmbeddingIndices: [minIndex],
                                                      removedEmbeddingIndices: [otherIndex])
@@ -290,6 +299,7 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
 // Updates cluster distances for given embeddings.
 func updateClusterDistances(embeddings: [[Float]],
                             clusterDistances: ClusterDistances,
+                            mustLink: [Int: Set<Int>],
                             cannotLink: [Int: Set<Int>],
                             updatedEmbeddingIndices: [Int] = [],
                             removedEmbeddingIndices: [Int] = []) -> ClusterDistances {
@@ -314,7 +324,9 @@ func updateClusterDistances(embeddings: [[Float]],
             if clusterDistances.distances[k].isNaN {
                 continue
             }
-            let distance = constrainedCosineDist(embeddings[i], embeddings[k], i, k, cannotLink)
+            let distance = constrainedCosineDist(embeddings[i], embeddings[k], i, k,
+                                                 mustLink: mustLink,
+                                                 cannotLink: cannotLink)
             clusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
             clusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance)
         }
@@ -340,7 +352,9 @@ func updateClusterDistances(embeddings: [[Float]],
             if i == k || clusterDistances.distances[k].isNaN {
                 continue
             }
-            let distance = constrainedCosineDist(embeddings[i], embeddings[k], i, k, cannotLink)
+            let distance = constrainedCosineDist(embeddings[i], embeddings[k], i, k,
+                                                 mustLink: mustLink,
+                                                 cannotLink: cannotLink)
             if clusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance) {
                 clusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
             } else if clusterDistances.otherIndices[k] == i {
@@ -359,7 +373,9 @@ func updateClusterDistances(embeddings: [[Float]],
             if i == k || clusterDistances.distances[k].isNaN {
                 continue
             }
-            let distance = constrainedCosineDist(embeddings[i], embeddings[k], i, k, cannotLink)
+            let distance = constrainedCosineDist(embeddings[i], embeddings[k], i, k,
+                                                 mustLink: mustLink,
+                                                 cannotLink: cannotLink)
             clusterDistances.tryUpdating(index: i, otherIndex: k, distance: distance)
 //            clusterDistances.tryUpdating(index: k, otherIndex: i, distance: distance)
         }

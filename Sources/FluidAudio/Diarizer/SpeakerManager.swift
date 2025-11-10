@@ -17,7 +17,10 @@ public class SpeakerManager {
     internal var embeddings: [[Float]] = []
     // Weights of the embeddings.
     internal var embeddingWeights: [Float] = []
-    
+
+    // Embeddings which must belong to the same speaker.
+    internal var mustLink: [Int: Set<Int>] = [:]
+
     // Embeddings which can't belong to the same speaker.
     internal var cannotLink: [Int: Set<Int>] = [:]
     
@@ -89,6 +92,7 @@ public class SpeakerManager {
     public func assignSpeakers(embeddings newEmbeddings: [[Float]],
                                durations: [Float],
                                embeddingWeights newEmbeddingWeights: [Float],
+                               mustLink newMustLink: [Int: Set<Int>],
                                cannotLink newCannotLink: [Int: Set<Int>],
                                maxSpeakerCount: Int = Int.max) -> ([Speaker?], [Int]) {
         precondition(newEmbeddings.count == durations.count && durations.count == newEmbeddingWeights.count,
@@ -101,6 +105,7 @@ public class SpeakerManager {
         
         var newEmbeddingsToSpeakersIDs: [Int: String] = [:]
         var newEmbeddingIndices: [Int] = []
+        let origEmbeddingCount = embeddings.count
         return queue.sync(flags: .barrier) {
             var validEmbeddingIndices: [Int] = []
             var recheckEmbeddingIndices: [Int] = []
@@ -119,11 +124,22 @@ public class SpeakerManager {
                 embeddings.append(embedding)
                 embeddingWeights.append(newEmbeddingWeights[i])
                 validEmbeddingIndices.append(i)
-                
+
+                if let otherIndices = newMustLink[i] {
+                    let otherIndices = otherIndices
+                        .filter { $0 < i }
+                        .map { $0 >= 0 ? newEmbeddingIndices[$0] : origEmbeddingCount - $0 }
+                        .filter { $0 >= 0 }
+                    mustLink[newEmbeddingIndex] = Set<Int>(otherIndices)
+                    for otherIndex in otherIndices {
+                        mustLink[otherIndex, default: []].insert(newEmbeddingIndex)
+                    }
+                }
+
                 if let otherIndices = newCannotLink[i] {
                     let otherIndices = otherIndices
                         .filter { $0 < i }
-                        .map { newEmbeddingIndices[$0] }
+                        .map { $0 >= 0 ? newEmbeddingIndices[$0] : origEmbeddingCount - $0 }
                         .filter { $0 >= 0 }
                     cannotLink[newEmbeddingIndex] = Set<Int>(otherIndices)
                     for otherIndex in otherIndices {
@@ -259,6 +275,7 @@ public class SpeakerManager {
                     let minClusterDistances = updateClusterDistances(
                         embeddings: embeddings,
                         clusterDistances: self.minClusterDistances,
+                        mustLink: mustLink,
                         cannotLink: cannotLink,
                         removedEmbeddingIndices: Array(orderedRemovedEmbeddingIndices))
 
@@ -272,6 +289,25 @@ public class SpeakerManager {
                         .filter { !removedEmbeddingIndices.contains($0.offset) }
                         .map { $0.element }
 
+                    for i in removedEmbeddingIndices {
+                        guard let otherIndices = mustLink[i] else {
+                            continue
+                        }
+                        mustLink.removeValue(forKey: i)
+                        for otherIndex in otherIndices {
+                            mustLink[otherIndex]!.remove(i)
+                            if mustLink[otherIndex]!.isEmpty {
+                                mustLink.removeValue(forKey: otherIndex)
+                            }
+                        }
+                    }
+                    for i in Array(removedEmbeddingIndices).sorted(by: >) {
+                        mustLink = Dictionary(uniqueKeysWithValues: mustLink.map { (key, value) in
+                            let value = Set<Int>(value.map { $0 > i ? $0 - 1 : $0 })
+                            return key > 0 ? (key - 1, value) : (key, value)
+                        })
+                    }
+                    
                     for i in removedEmbeddingIndices {
                         guard let otherIndices = cannotLink[i] else {
                             continue
