@@ -525,6 +525,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 2  // Limit to 2 speakers
         )
         
@@ -550,6 +551,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 1  // Force all into one speaker
         )
         
@@ -576,6 +578,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 10  // Greater than number of embeddings
         )
         
@@ -602,6 +605,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 2  // But limit to 2 speakers
         )
         
@@ -627,6 +631,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: Int.max  // No maximum limit
         )
         
@@ -653,6 +658,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 2  // But limit to 2 speakers
         )
         
@@ -699,6 +705,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 3  // Limit total speakers to 3
         )
         
@@ -726,6 +733,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 3  // Limit to 3 speakers
         )
         
@@ -776,6 +784,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 4  // Limit total speakers to 4 (2 known + 2 new)
         )
         
@@ -826,6 +835,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 1  // Force all into one speaker
         )
         
@@ -856,6 +866,7 @@ final class SpeakerManagerTests: XCTestCase {
                 embeddings: embeddings,
                 durations: durations,
                 embeddingWeights: weights,
+                cannotLink: [:],
                 maxSpeakerCount: 5  // Limit to 5 speakers
             )
             
@@ -898,6 +909,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 2
         )
         
@@ -950,6 +962,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 2 // Should trigger special case logic
         )
         
@@ -993,6 +1006,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 1 // Force all to one speaker
         )
         
@@ -1040,6 +1054,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 3 // Allow 3 total speakers (2 known + 1 new)
         )
         
@@ -1089,6 +1104,7 @@ final class SpeakerManagerTests: XCTestCase {
             embeddings: embeddings,
             durations: durations,
             embeddingWeights: weights,
+            cannotLink: [:],
             maxSpeakerCount: 2 // Equal to number of known speakers
         )
         

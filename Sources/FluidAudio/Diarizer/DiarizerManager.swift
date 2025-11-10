@@ -332,7 +332,8 @@ public final class DiarizerManager {
         let (speakers, validEmbeddingIndices) = speakerManager.assignSpeakers(
             embeddings: validEmbeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights)
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:])
         for (i, speaker) in speakers.enumerated() {
             guard let speaker else {
                 continue

@@ -44,7 +44,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: [],
             durations: [],
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertTrue(speakers.isEmpty)
@@ -65,7 +66,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 2)
@@ -93,7 +95,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 2)
@@ -121,7 +124,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 3)
@@ -153,7 +157,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 2)
@@ -193,7 +198,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 2)
@@ -221,7 +227,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 1)
@@ -243,7 +250,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 1)
@@ -264,7 +272,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 20)
@@ -292,7 +301,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 5)
@@ -325,7 +335,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
             let (speakers, indices) = speakerManager.assignSpeakers(
                 embeddings: embeddings,
                 durations: durations,
-                embeddingWeights: embeddingWeights
+                embeddingWeights: embeddingWeights,
+                cannotLink: [:]
             )
             XCTAssertEqual(speakers.count, 100)
             XCTAssertEqual(indices.count, 100)
@@ -353,7 +364,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 5)
@@ -378,7 +390,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 3)
@@ -402,7 +415,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 1000)
@@ -434,7 +448,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 7)
@@ -476,7 +491,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (speakers, indices) = speakerManager.assignSpeakers(
             embeddings: embeddings,
             durations: durations,
-            embeddingWeights: embeddingWeights
+            embeddingWeights: embeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(speakers.count, 5)
@@ -519,7 +535,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (_, indices1) = speakerManager.assignSpeakers(
             embeddings: embeddings1,
             durations: durations1,
-            embeddingWeights: embeddingWeights1
+            embeddingWeights: embeddingWeights1,
+            cannotLink: [:]
         )
         
         let embeddings2: [[Float]] = [
@@ -531,7 +548,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (_, indices2) = speakerManager.assignSpeakers(
             embeddings: embeddings2,
             durations: durations2,
-            embeddingWeights: embeddingWeights2
+            embeddingWeights: embeddingWeights2,
+            cannotLink: [:]
         )
         
         // First batch should have indices 0 and 1
@@ -557,7 +575,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (invalidSpeakers, invalidIndices) = speakerManager.assignSpeakers(
             embeddings: invalidEmbeddings,
             durations: invalidDurations,
-            embeddingWeights: invalidEmbeddingWeights
+            embeddingWeights: invalidEmbeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(invalidSpeakers.count, 2)
@@ -579,7 +598,8 @@ final class SpeakerManagerBatchAssignmentTests: XCTestCase {
         let (mixedSpeakers, mixedIndices) = speakerManager.assignSpeakers(
             embeddings: mixedEmbeddings,
             durations: mixedDurations,
-            embeddingWeights: mixedEmbeddingWeights
+            embeddingWeights: mixedEmbeddingWeights,
+            cannotLink: [:]
         )
         
         XCTAssertEqual(mixedSpeakers.count, 3)

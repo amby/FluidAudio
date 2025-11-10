@@ -17,6 +17,10 @@ public class SpeakerManager {
     internal var embeddings: [[Float]] = []
     // Weights of the embeddings.
     internal var embeddingWeights: [Float] = []
+    
+    // Embeddings which can't belong to the same speaker.
+    internal var cannotLink: [Int: Set<Int>] = [:]
+    
     // Computed minimal cluster distances.
     internal var minClusterDistances = ClusterDistances(type: .min, distances: [], otherIndices: [])
     private var nextSpeakerId = 1
@@ -85,6 +89,7 @@ public class SpeakerManager {
     public func assignSpeakers(embeddings newEmbeddings: [[Float]],
                                durations: [Float],
                                embeddingWeights newEmbeddingWeights: [Float],
+                               cannotLink newCannotLink: [Int: Set<Int>],
                                maxSpeakerCount: Int = Int.max) -> ([Speaker?], [Int]) {
         precondition(newEmbeddings.count == durations.count && durations.count == newEmbeddingWeights.count,
                      "Mismatched number of embeddings (\(newEmbeddings.count)), " +
@@ -109,10 +114,22 @@ public class SpeakerManager {
                     newEmbeddingIndices.append(-1)
                     continue
                 }
-                newEmbeddingIndices.append(embeddings.count)
+                let newEmbeddingIndex = embeddings.count
+                newEmbeddingIndices.append(newEmbeddingIndex)
                 embeddings.append(embedding)
                 embeddingWeights.append(newEmbeddingWeights[i])
                 validEmbeddingIndices.append(i)
+                
+                if let otherIndices = newCannotLink[i] {
+                    let otherIndices = otherIndices
+                        .filter { $0 < i }
+                        .map { newEmbeddingIndices[$0] }
+                        .filter { $0 >= 0 }
+                    cannotLink[newEmbeddingIndex] = Set<Int>(otherIndices)
+                    for otherIndex in otherIndices {
+                        cannotLink[otherIndex, default: []].insert(newEmbeddingIndex)
+                    }
+                }
             }
             
             guard !validEmbeddingIndices.isEmpty || !recheckEmbeddingIndices.isEmpty else {
@@ -242,7 +259,7 @@ public class SpeakerManager {
                     let minClusterDistances = updateClusterDistances(
                         embeddings: embeddings,
                         clusterDistances: self.minClusterDistances,
-                        cannotLink: [:],
+                        cannotLink: cannotLink,
                         removedEmbeddingIndices: Array(orderedRemovedEmbeddingIndices))
 
                     embeddings = embeddings
@@ -255,6 +272,25 @@ public class SpeakerManager {
                         .filter { !removedEmbeddingIndices.contains($0.offset) }
                         .map { $0.element }
 
+                    for i in removedEmbeddingIndices {
+                        guard let otherIndices = cannotLink[i] else {
+                            continue
+                        }
+                        cannotLink.removeValue(forKey: i)
+                        for otherIndex in otherIndices {
+                            cannotLink[otherIndex]!.remove(i)
+                            if cannotLink[otherIndex]!.isEmpty {
+                                cannotLink.removeValue(forKey: otherIndex)
+                            }
+                        }
+                    }
+                    for i in Array(removedEmbeddingIndices).sorted(by: >) {
+                        cannotLink = Dictionary(uniqueKeysWithValues: cannotLink.map { (key, value) in
+                            let value = Set<Int>(value.map { $0 > i ? $0 - 1 : $0 })
+                            return key > 0 ? (key - 1, value) : (key, value)
+                        })
+                    }
+                    
                     self.minClusterDistances = ClusterDistances(
                         type: minClusterDistances.type,
                         distances: minClusterDistances.distances

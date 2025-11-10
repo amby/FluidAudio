@@ -34,7 +34,7 @@ public func cosineDist(_ a: [Float], _ b: [Float]) -> Float {
 
 // Computes cosine distance using given constraints.
 func constrainedCosineDist(_ a: [Float], _ b: [Float], _ ai: Int, _ bi: Int, _ cannotLink: [Int: Set<Int>]) -> Float {
-    if let indices = cannotLink[ai], indices.contains(bi) {
+    if let otherIndices = cannotLink[ai], otherIndices.contains(bi) {
         // Treat embeddings which can't be in the same cluster as having infinite distance.
         return .infinity
     }
