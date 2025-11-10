@@ -170,6 +170,9 @@ public func clusterize(maxDistance: Float, // Maximum distance threshold.
         return (minClusterDistances, [])
     }
     
+//    print("SEG MUST LINK", mustLink)
+//    print("SEG CANNOT LINK", cannotLink)
+
 //    var weightsSums = embeddingWeights
     var weightsSums = embeddingWeights.enumerated().map { $0.element * embeddingMagnitude(embeddings[$0.offset]) }
     var sums = embeddings.enumerated().map { mulEmbedding($0.element, weightsSums[$0.offset]) }

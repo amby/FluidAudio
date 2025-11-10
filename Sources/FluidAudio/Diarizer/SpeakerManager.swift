@@ -128,7 +128,7 @@ public class SpeakerManager {
                 if let otherIndices = newMustLink[i] {
                     let otherIndices = otherIndices
                         .filter { $0 < i }
-                        .map { $0 >= 0 ? newEmbeddingIndices[$0] : origEmbeddingCount - $0 }
+                        .map { $0 >= 0 ? newEmbeddingIndices[$0] : origEmbeddingCount + $0 }
                         .filter { $0 >= 0 }
                     mustLink[newEmbeddingIndex] = Set<Int>(otherIndices)
                     for otherIndex in otherIndices {
@@ -139,7 +139,7 @@ public class SpeakerManager {
                 if let otherIndices = newCannotLink[i] {
                     let otherIndices = otherIndices
                         .filter { $0 < i }
-                        .map { $0 >= 0 ? newEmbeddingIndices[$0] : origEmbeddingCount - $0 }
+                        .map { $0 >= 0 ? newEmbeddingIndices[$0] : origEmbeddingCount + $0 }
                         .filter { $0 >= 0 }
                     cannotLink[newEmbeddingIndex] = Set<Int>(otherIndices)
                     for otherIndex in otherIndices {
@@ -147,6 +147,8 @@ public class SpeakerManager {
                     }
                 }
             }
+            
+//            print("NEW EMBEDDING INDICES", newEmbeddingIndices)
             
             guard !validEmbeddingIndices.isEmpty || !recheckEmbeddingIndices.isEmpty else {
                 return (.init(repeating: nil, count: newEmbeddings.count), newEmbeddingIndices)
@@ -161,7 +163,9 @@ public class SpeakerManager {
                     maxClusterCount: maxSpeakerCount,
                     embeddings: embeddings,
                     embeddingWeights: embeddingWeights,
-                    minClusterDistances: minClusterDistances)
+                    minClusterDistances: minClusterDistances,
+                    mustLink: mustLink,
+                    cannotLink: cannotLink)
                 
 //                print("MIN CLUSTER DISTANCES: \(embeddings.count) \(minClusterDistances)")
 //                print("EMBEDDING WEIGHT:", embeddingWeights)
