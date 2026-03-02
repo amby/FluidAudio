@@ -40,8 +40,8 @@ public struct AppLogger {
     }
 
     public func debug(_ message: String) {
-        osLogger.debug("\(message)")
-        logToConsole(.debug, message)
+//        osLogger.debug("\(message)")
+//        logToConsole(.debug, message)
     }
 
     public func info(_ message: String) {
