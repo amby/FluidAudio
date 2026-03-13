@@ -188,6 +188,7 @@ public class SpeakerManager {
                 let speakerEmbeddings: [[Float]] = speakers.reduce(into: []) {
                     $0.append($1.currentEmbedding)
                 }
+                var clusterizedSpeakerCount = speakerDatabase.values.count { $0.clusterized }
                 
                 var minDistanceToClusters = computeDistancesToClusters(
                     embeddings: speakerEmbeddings,
@@ -201,10 +202,16 @@ public class SpeakerManager {
                     if minDistance == .infinity {
                         break
                     }
-                    if minDistance >= speakerThreshold && !(speakers.count == maxSpeakerCount &&
-                                                            clusters.count == maxSpeakerCount) {
+                    
+                    // If distance to the nearest speaker is too far and all previously clustered
+                    // speakers are assigned to corresponding cluster, there is no need to continue.
+                    if minDistance >= speakerThreshold && clustersToUsers.count == clusterizedSpeakerCount {
                         break
                     }
+//                    if minDistance >= speakerThreshold && !(speakers.count == maxSpeakerCount &&
+//                                                            clusters.count == maxSpeakerCount) {
+//                        break
+//                    }
                     let minIndex = Int(uIntMinIndex)
                     
                     let clusterIndex = minDistanceToClusters.otherIndices[minIndex]
@@ -213,6 +220,10 @@ public class SpeakerManager {
                     clustersToUsers[clusterIndex] = speaker.id
 
                     speaker.currentEmbedding = clusters[clusterIndex].centroid
+                    
+                    if !speaker.clusterized {
+                        clusterizedSpeakerCount += 1
+                    }
                     speaker.clusterized = true
 
                     tmpClusters[clusterIndex] = Cluster(embeddingIndices: [], centroid: [])
