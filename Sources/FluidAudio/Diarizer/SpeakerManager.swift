@@ -202,12 +202,17 @@ public class SpeakerManager {
                     if minDistance == .infinity {
                         break
                     }
-                    
-                    // If distance to the nearest speaker is too far and all previously clustered
-                    // speakers are assigned to corresponding cluster, there is no need to continue.
-                    if minDistance >= speakerThreshold && clustersToUsers.count == clusterizedSpeakerCount {
+
+                    if minDistance >= speakerThreshold && !(clusterizedSpeakerCount >= maxSpeakerCount &&
+                                                            clusters.count == maxSpeakerCount) {
                         break
                     }
+
+//                    // If distance to the nearest speaker is too far and all previously clustered
+//                    // speakers are assigned to corresponding cluster, there is no need to continue.
+//                    if minDistance >= speakerThreshold && clustersToUsers.count == clusterizedSpeakerCount {
+//                        break
+//                    }
 //                    if minDistance >= speakerThreshold && !(speakers.count == maxSpeakerCount &&
 //                                                            clusters.count == maxSpeakerCount) {
 //                        break
